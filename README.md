@@ -14,7 +14,7 @@ Learned được chọn **0/1.280 AR** và **100/1.000 OD**. OD/H.264 qua DEV sc
 train/eval; học chọn profile preprocessing bằng nhãn từ byte codec thật trên
 TRAIN. Các profile mạnh và temporal/DC phục vụ QP40/45/50; identity vẫn hợp lệ.
 Lượt Kaggle mới gồm đối chứng chỉ sửa guard trên checkpoint V23, rồi train/eval
-policy V24 trên cùng cohort. **Chưa có kết quả task V24.** Xem [thiết kế và
+policy V24 trên cùng cohort. **[Job V24 private đang RUNNING](docs/V24_KAGGLE_EXECUTION.md); chưa có kết quả task V24.** Xem [thiết kế và
 phép so sánh V24](docs/V24_AR_DESIGN.md), [kiểm chứng local](docs/V24_VALIDATION.md).
 
 ## Bộ adaptive preprocessor
