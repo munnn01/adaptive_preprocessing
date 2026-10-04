@@ -133,12 +133,15 @@ class RateAwarePreprocessor(nn.Module):
 
 
 def load_preprocessor(state, task):
+    from .profiles import ProfilePreprocessor
     if state.get("task") != task or state.get("steps", 0) < 1 or not state.get("train_ids_sha256"):
         raise ValueError("checkpoint task/training provenance mismatch")
     if state.get("schema") == "adaptive-vcm-blend-v1":
         model = AdaptiveBlendPreprocessor(state["width"])
     elif state.get("schema") == RateAwarePreprocessor.schema:
         model = RateAwarePreprocessor(state["width"], task)
+    elif state.get("schema") == ProfilePreprocessor.schema:
+        model = ProfilePreprocessor(state["width"], task)
     else:
         raise ValueError("unsupported preprocessor checkpoint schema")
     model.load_state_dict(state["model"], strict=True)

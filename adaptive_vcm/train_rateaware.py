@@ -141,11 +141,14 @@ def train(args):
                                     controls=trial_control, bank=bank, return_aux=True)
                 edited = pixels(output)
             stream = codec.roundtrip(edited)
-            if stream.data == anchor.data:
-                distances, decisions = tuple(0. for _ in teachers), tuple(True for _ in teachers)
+            trial_predictions = (anchor_predictions if stream.data == anchor.data else
+                                 predict(teachers, args.task, stream.decoded))
+            if args.task == 'od' and stream.data == anchor.data:
+                # Preserve the unknown-foreground OD identity fallback.
+                distances, decisions = (0.,), (True,)
             else:
                 distances, decisions = relative_guard(args.task, source_predictions, anchor_predictions,
-                                                       predict(teachers, args.task, stream.decoded), cfg)
+                                                       trial_predictions, cfg)
             objective, violation = measured_objective(stream.coded_bytes, anchor.coded_bytes,
                                                        distances, decisions, slack, duals[group])
             measured.append({"name": trial_names[index], "coded_bytes": stream.coded_bytes,

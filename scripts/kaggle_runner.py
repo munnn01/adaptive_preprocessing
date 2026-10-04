@@ -78,14 +78,24 @@ test -n "$ANN" && test -n "$IMAGES"
         data_arguments = '--task od --root "$IMAGES" --annotations "$ANN"'
     checkpoint = ""
     recipe = getattr(args, "recipe", "v22")
-    if recipe not in ("v22", "v23"):
+    if recipe not in ("v22", "v23", "v24"):
         raise ValueError("unsupported recipe")
-    config_option = " --config configs/v23_screen.json" if recipe == "v23" else ""
-    trainer = "adaptive_vcm.train_rateaware" if recipe == "v23" else "adaptive_vcm.train"
+    if recipe == "v24" and (args.task != "ar" or args.mode != "learned"):
+        raise ValueError("V24 recipe is registered for learned AR only")
+    config_option = f" --config configs/{recipe}_screen.json" if recipe != "v22" else ""
+    trainer = {"v22": "adaptive_vcm.train", "v23": "adaptive_vcm.train_rateaware",
+               "v24": "adaptive_vcm.train_profiles"}[recipe]
+    if recipe == "v24":
+        # Paired guard-only control: exact V23 final checkpoint, unchanged config,
+        # current corrected guard. Never train from or select a model on DEV.
+        bash += '''BASELINE=$(python scripts/find_v23_checkpoint.py /kaggle/input)
+test -f "$BASELINE"
+'''
+        bash += f'python -m adaptive_vcm.evaluate {data_arguments} --config configs/v23_screen.json --checkpoint "$BASELINE" --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap} --ablate-learned --out "$OUT/guard_only"\n'
     if args.mode == "learned":
         bash += f'python -m {trainer} {data_arguments}{config_option} --count 512 --steps {args.steps} --seed {args.seed} --out "$OUT/train"\n'
         checkpoint = ' --checkpoint "$OUT/train/preprocessor_last.pth"'
-    ablation_option = " --ablate-learned" if recipe == "v23" and args.mode == "learned" else ""
+    ablation_option = " --ablate-learned" if recipe in ("v23", "v24") and args.mode == "learned" else ""
     bash += f'python -m adaptive_vcm.evaluate {data_arguments}{config_option} --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap}{checkpoint}{ablation_option} --out "$OUT/eval"\n'
     directory = args.directory or ROOT / "outputs/kaggle" / args.slug
     directory.mkdir(parents=True, exist_ok=True)
@@ -96,7 +106,8 @@ test -n "$ANN" && test -n "$IMAGES"
     metadata = {"id": f"{args.account}/{args.slug}", "title": args.slug, "code_file": "notebook.ipynb",
                 "language": "python", "kernel_type": "notebook", "is_private": True,
                 "enable_gpu": True, "enable_internet": True, "dataset_sources": [dataset],
-                "kernel_sources": [], "competition_sources": [], "model_sources": []}
+                "kernel_sources": ["qktttttttttt/v23-rateaware-ar-s302001"] if recipe == "v24" else [],
+                "competition_sources": [], "model_sources": []}
     (directory / "notebook.ipynb").write_text(json.dumps(notebook, indent=2), encoding="utf-8")
     (directory / "kernel-metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     (directory / "job.json").write_text(json.dumps({"commit": args.commit, "task": args.task, "mode": args.mode, "recipe": recipe,
@@ -130,7 +141,7 @@ def main():
     parser.add_argument("--slug")
     parser.add_argument("--task", choices=["ar", "od"], default="ar")
     parser.add_argument("--mode", choices=["analytic", "learned"], default="learned")
-    parser.add_argument("--recipe", choices=["v22", "v23"], default="v22")
+    parser.add_argument("--recipe", choices=["v22", "v23", "v24"], default="v22")
     parser.add_argument("--commit")
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--count", type=int, default=128)

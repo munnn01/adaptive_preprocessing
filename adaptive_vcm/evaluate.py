@@ -20,6 +20,7 @@ from .metrics import curve_summary, paired_ar_bootstrap
 from .preprocessing import Candidate, action_protection, boxes_to_mask, make_candidates, normalize_map
 from .selection import Observation, relative_guard, select
 from .rateaware import RateAwarePreprocessor, load_preprocessor, semantic_protection
+from .profiles import ProfilePreprocessor
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,6 +45,7 @@ def choose_stream(clip, protection, task, codec, cfg, teachers, source_predictio
                   *, learned_mask=None, components=False):
     """Run encoder-only selection. There is no ground-truth or evaluator input."""
     candidates = make_candidates(clip, protection, task, codec.qp, cfg[f"{task}_candidates"])
+    selected_profile = None
     if task == "od" and not np.any(source_predictions[0]["scores"] >= cfg["od_score_threshold"]):
         candidates = candidates[:1]  # unknown foreground: retain the entire source
     foreground_known = task == "ar" or np.any(source_predictions[0]["scores"] >= cfg["od_score_threshold"])
@@ -53,15 +55,20 @@ def choose_stream(clip, protection, task, codec, cfg, teachers, source_predictio
             x = torch.from_numpy(clip.copy()).to(device).float().permute(3, 0, 1, 2)[None] / 255
             mask_np = protection if learned_mask is None else learned_mask
             mask = torch.from_numpy(mask_np.copy()).to(device)[None, None, None].expand(1, 1, len(clip), *clip.shape[1:3])
-            output = learned(x, x.new_tensor([codec.qp]), x.new_tensor([int(codec.codec == "h265")]), mask)
+            if isinstance(learned, ProfilePreprocessor):
+                output, aux = learned(x, x.new_tensor([codec.qp]), x.new_tensor([int(codec.codec == "h265")]), mask, return_aux=True)
+                selected_profile = learned.profiles[int(aux['profile_indices'][0])][0]
+            else:
+                output = learned(x, x.new_tensor([codec.qp]), x.new_tensor([int(codec.codec == "h265")]), mask)
             pixels = output[0].permute(1, 2, 3, 0).mul(255).round().clamp(0, 255).byte().cpu().numpy()
             candidates.append(Candidate(getattr(learned, "candidate_name", "learned_blend"), pixels))
     encoded, predictions, observations, audit = [], [], [], []
     for candidate in candidates:
         result = codec.roundtrip(candidate.clip)
         encoded.append(result)
-        decoded_predictions = [teacher.probabilities(result.decoded) if task == "ar" else teacher.predict(result.decoded)
-                               for teacher in teachers]
+        decoded_predictions = (predictions[0] if predictions and result.data == encoded[0].data else
+                               [teacher.probabilities(result.decoded) if task == "ar" else teacher.predict(result.decoded)
+                                for teacher in teachers])
         predictions.append(decoded_predictions)
         if not observations:
             distances, decisions = tuple(0. for _ in teachers), tuple(True for _ in teachers)
@@ -72,6 +79,8 @@ def choose_stream(clip, protection, task, codec, cfg, teachers, source_predictio
                       "relative_task_distance": [float(d) if np.isfinite(d) else None for d in distances],
                       "preserves_decision": list(decisions), "codec_seconds": result.seconds,
                       "stream_sha256": hashlib.sha256(result.data).hexdigest()})
+        if candidate.name == 'learned_profile':
+            audit[-1]['profile'] = selected_profile
     chosen = select(observations, cfg["ar_kl_slack"] if task == "ar" else cfg["od_distance_slack"], cfg["min_savings"])
     if components:
         slack = cfg["ar_kl_slack"] if task == "ar" else cfg["od_distance_slack"]
@@ -185,8 +194,8 @@ def run(args) -> dict:
     learned = None
     if args.checkpoint:
         state = torch.load(args.checkpoint, map_location=device, weights_only=True)
-        if state.get("schema") == RateAwarePreprocessor.schema and state.get("training_config") != cfg:
-            raise ValueError("V23 checkpoint/evaluation configuration mismatch")
+        if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema) and state.get("training_config") != cfg:
+            raise ValueError("checkpoint/evaluation configuration mismatch")
         learned = load_preprocessor(state, args.task).to(device)
         learned.eval()
     ablate = getattr(args, "ablate_learned", False)
@@ -202,6 +211,7 @@ def run(args) -> dict:
                 "scope": cfg["scope"], "rate_denominator": "original pre-transform T*H*W pixels",
                 "selection_cost": "all candidate encode/decode and teacher calls included in selection_seconds",
                 "component_evaluation": ablate,
+                "ar_guard_rule": "anchor_relative_v2" if args.task == "ar" else None,
                 "component_scope": "learned_raw is ungated; learned_guarded uses identity fallback; component curves have no bootstrap CI"}
     write_json(args.out / "manifest.json", manifest)
     all_rows, geometry = {codec: [] for codec in args.codecs}, {}

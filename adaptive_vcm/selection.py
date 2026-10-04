@@ -17,8 +17,12 @@ class Observation:
 
 
 def ar_guard(source: np.ndarray, anchor: np.ndarray, trial: np.ndarray,
-             confidence: float = .6) -> tuple[float, bool]:
-    """KL(source||trial) relative to codec-only; no target class is accepted."""
+             confidence: float = .6, *, require_anchor_decision: bool = False) -> tuple[float, bool]:
+    """Codec-relative KL and decision protection; anchor is always admissible.
+
+    A confident source can protect a decision only if the codec retained it.
+    Otherwise requiring both source and anchor classes would be contradictory.
+    """
     vectors = [np.asarray(p, np.float64) for p in (source, anchor, trial)]
     if any(p.ndim != 1 or len(p) < 2 or not np.isfinite(p).all() or np.any(p < 0)
            or not np.isclose(p.sum(), 1, atol=1e-5) for p in vectors):
@@ -28,8 +32,9 @@ def ar_guard(source: np.ndarray, anchor: np.ndarray, trial: np.ndarray,
     s, a, c = vectors
     def kl(p):
         return float(np.sum(s * (np.log(np.maximum(s, 1e-12)) - np.log(np.maximum(p, 1e-12)))))
-    decision = ((s.max() < confidence or s.argmax() == c.argmax())
-                and (a.max() < confidence or a.argmax() == c.argmax()))
+    protect = (require_anchor_decision or a.max() >= confidence
+               or (s.max() >= confidence and s.argmax() == a.argmax()))
+    decision = not protect or a.argmax() == c.argmax()
     return kl(c) - kl(a), bool(decision)
 
 
@@ -78,12 +83,11 @@ def relative_guard(task, source_predictions, anchor_predictions, trial_predictio
     if not (len(source_predictions) == len(anchor_predictions) == len(trial_predictions)):
         raise ValueError("inconsistent teacher counts")
     if task == "ar":
-        pairs = [ar_guard(s, a, c, cfg["ar_confidence"])
+        pairs = [ar_guard(s, a, c, cfg["ar_confidence"],
+                          require_anchor_decision=cfg.get("ar_require_anchor_decision", False))
                  for s, a, c in zip(source_predictions, anchor_predictions, trial_predictions)]
         distances = tuple(p[0] for p in pairs)
-        decisions = tuple(bool(p[1] and (not cfg.get("ar_require_anchor_decision", False)
-                                    or a.argmax() == c.argmax()))
-                          for p, a, c in zip(pairs, anchor_predictions, trial_predictions))
+        decisions = tuple(p[1] for p in pairs)
         return distances, decisions
     if task != "od" or len(source_predictions) != 1:
         raise ValueError("unsupported task/teacher count")
