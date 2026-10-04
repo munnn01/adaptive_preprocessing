@@ -1,0 +1,37 @@
+import argparse
+import importlib.util
+import json
+
+import pytest
+
+from adaptive_vcm.evaluate import ROOT
+
+spec = importlib.util.spec_from_file_location("kaggle_runner", ROOT / "scripts/kaggle_runner.py")
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+
+
+@pytest.mark.parametrize("task", ["ar", "od"])
+def test_private_notebook_pins_commit_and_contains_no_credential(task, tmp_path):
+    args = argparse.Namespace(commit="a" * 40, slug="v22-test-" + task, account="example",
+                              count=100, steps=1000, bootstrap=200, task=task, mode="learned",
+                              seed=302001, directory=tmp_path / task)
+    directory = runner.prepare(args)
+    notebook = json.loads((directory / "notebook.ipynb").read_text())
+    metadata = json.loads((directory / "kernel-metadata.json").read_text())
+    cell = "".join(notebook["cells"][0]["source"])
+    assert cell.startswith("%%bash\n")
+    assert args.commit in cell and "adaptive_vcm.train" in cell and "adaptive_vcm.evaluate" in cell
+    assert "KAGGLE_API_TOKEN" not in cell and "pool.json" not in cell
+    assert metadata["is_private"] is True and metadata["enable_gpu"] is True
+
+
+def test_pool_auth_drops_inherited_other_account_without_printing_secret(tmp_path, monkeypatch):
+    pool = tmp_path / "pool.json"
+    pool.write_text(json.dumps({"example": "PRIVATE_TEST_VALUE"}))
+    monkeypatch.setenv("KAGGLE_KEY", "different-account")
+    monkeypatch.setenv("KAGGLE_USERNAME", "different-account")
+    env, secret = runner.pool_environment(pool, "example")
+    assert env["KAGGLE_API_TOKEN"] == secret == "PRIVATE_TEST_VALUE"
+    assert "KAGGLE_KEY" not in env and "KAGGLE_USERNAME" not in env
+

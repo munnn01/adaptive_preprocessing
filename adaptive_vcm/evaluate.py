@@ -1,0 +1,282 @@
+"""Paired, actual-bitstream benchmark of adaptive preprocessing for AR and OD."""
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+import hashlib
+import json
+from pathlib import Path
+import platform
+import subprocess
+import time
+
+import numpy as np
+import torch
+
+from .analyzers import ActionAnalyzer, DetectionAnalyzer
+from .codec import StandardCodec, reference_bpp
+from .data import ar_plan, od_plan, read_video, read_image, fingerprint
+from .metrics import curve_summary, paired_ar_bootstrap
+from .preprocessing import Candidate, action_protection, boxes_to_mask, make_candidates, normalize_map
+from .selection import Observation, ar_guard, detection_distance, select
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def write_json(path: Path, value) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+
+
+def code_manifest() -> dict:
+    files = list((ROOT / "adaptive_vcm").glob("*.py"))
+    hashes = {p.relative_to(ROOT).as_posix(): hashlib.sha256(p.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+              for p in sorted(files)}
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        commit = None
+    return {"commit": commit, "files_sha256": hashes}
+
+
+def choose_stream(clip, protection, task, codec, cfg, teachers, source_predictions, learned=None):
+    """Run encoder-only selection. There is no ground-truth or evaluator input."""
+    candidates = make_candidates(clip, protection, task, codec.qp, cfg[f"{task}_candidates"])
+    if task == "od" and not np.any(source_predictions[0]["scores"] >= cfg["od_score_threshold"]):
+        candidates = candidates[:1]  # unknown foreground: retain the entire source
+    if learned is not None and len(candidates) > 1:
+        with torch.no_grad():
+            device = next(learned.parameters()).device
+            x = torch.from_numpy(clip.copy()).to(device).float().permute(3, 0, 1, 2)[None] / 255
+            mask = torch.from_numpy(protection.copy()).to(device)[None, None, None].expand(1, 1, len(clip), *clip.shape[1:3])
+            output = learned(x, x.new_tensor([codec.qp]), x.new_tensor([int(codec.codec == "h265")]), mask)
+            pixels = output[0].permute(1, 2, 3, 0).mul(255).round().clamp(0, 255).byte().cpu().numpy()
+            candidates.append(Candidate("learned_blend", pixels))
+    encoded, predictions, observations, audit = [], [], [], []
+    for candidate in candidates:
+        result = codec.roundtrip(candidate.clip)
+        encoded.append(result)
+        decoded_predictions = [teacher.probabilities(result.decoded) if task == "ar" else teacher.predict(result.decoded)
+                               for teacher in teachers]
+        predictions.append(decoded_predictions)
+        if not observations:
+            distances, decisions = tuple(0. for _ in teachers), tuple(True for _ in teachers)
+        elif task == "ar":
+            pairs = [ar_guard(s, a, c, cfg["ar_confidence"])
+                     for s, a, c in zip(source_predictions, predictions[0], decoded_predictions)]
+            distances, decisions = tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
+        else:
+            source, anchor, trial = source_predictions[0], predictions[0][0], decoded_predictions[0]
+            relative = detection_distance(source, trial, cfg["od_score_threshold"]) - detection_distance(source, anchor, cfg["od_score_threshold"])
+            distances, decisions = (relative,), (True,)
+        observations.append(Observation(candidate.name, result.coded_bytes, distances, decisions))
+        audit.append({"name": candidate.name, "coded_bytes": result.coded_bytes,
+                      "relative_task_distance": [float(d) if np.isfinite(d) else None for d in distances],
+                      "preserves_decision": list(decisions), "codec_seconds": result.seconds,
+                      "stream_sha256": hashlib.sha256(result.data).hexdigest()})
+    chosen = select(observations, cfg["ar_kl_slack"] if task == "ar" else cfg["od_distance_slack"], cfg["min_savings"])
+    return encoded[0], encoded[chosen], candidates[chosen].name, audit
+
+
+def _ar_curves(rows, names, qps, draws, seed):
+    output = {}
+    for name in names:
+        curves = {}
+        for arm in ("anchor", "adaptive"):
+            curves[arm] = {"bpp": [], "quality": []}
+            for qp in qps:
+                records = [r for r in rows if r["arm"] == arm and r["qp"] == qp]
+                curves[arm]["bpp"].append(float(np.mean([r["bpp"] for r in records])))
+                curves[arm]["quality"].append(float(np.mean([r["correct"][name] for r in records])))
+        ci = paired_ar_bootstrap(rows, name, qps, draws, seed)
+        output[name] = {"curves": curves, **curve_summary(curves["anchor"]["bpp"], curves["anchor"]["quality"],
+                       curves["adaptive"]["bpp"], curves["adaptive"]["quality"], ci=ci)}
+    return output
+
+
+def _od_curves(rows, qps, draws, seed, meta, gt, codec):
+    from .coco_metrics import coco_map, paired_bootstrap_detection_bd
+    ids = sorted(gt)
+    records = {arm: {(codec, qp): {int(r["id"]): (r["bpp"], r["predictions"]) for r in rows
+                                 if r["arm"] == arm and r["qp"] == qp} for qp in qps}
+               for arm in ("anchor", "adaptive")}
+    curves = {arm: {"bpp": [], "quality": []} for arm in records}
+    for arm in records:
+        for qp in qps:
+            slot = records[arm][(codec, qp)]
+            if set(slot) != set(ids):
+                raise ValueError("missing paired OD records")
+            curves[arm]["bpp"].append(float(np.mean([slot[i][0] for i in ids])))
+            predictions = [p for i in ids for p in slot[i][1]]
+            curves[arm]["quality"].append(coco_map(predictions, gt, ids, meta)[0])
+    ci = paired_bootstrap_detection_bd(records, codec=codec, qps=qps, gt_by_id=gt,
+                                      image_ids=ids, ann_meta=meta, arms=["adaptive"], n_boot=draws, seed=seed).get("adaptive", {})
+    ci["finite_fraction"] = ci.get("n_draws", 0) / draws if draws else 0.
+    return {"resnet50": {"curves": curves, **curve_summary(curves["anchor"]["bpp"], curves["anchor"]["quality"],
+                              curves["adaptive"]["bpp"], curves["adaptive"]["quality"], ci=ci)}}
+
+
+def _gt_scaled(meta, plan, geometry):
+    ids = {r["image_id"] for r in plan}
+    gt = {i: [] for i in ids}
+    for ann in meta["annotations"]:
+        i = ann["image_id"]
+        if i not in ids:
+            continue
+        sx, sy, left, top = geometry[i]
+        x, y, w, h = ann["bbox"]
+        gt[i].append({**ann, "bbox": [x * sx + left, y * sy + top, w * sx, h * sy],
+                      "area": ann.get("area", w * h) * sx * sy})
+    return gt
+
+
+def _od_predictions(detection, image_id):
+    from .coco_metrics import coco_box
+    return [{"image_id": image_id, "category_id": int(label), "bbox": coco_box(box), "score": float(score)}
+            for box, score, label in zip(detection["boxes"], detection["scores"], detection["labels"]) if score >= .05]
+
+
+def validate_config(cfg):
+    if cfg.get("schema") != 1 or cfg.get("target_bd_rate_pct") != -10:
+        raise ValueError("unsupported configuration schema/target")
+    qps = cfg["qps"]
+    if len(qps) < 3 or len(set(qps)) != len(qps) or any(type(q) is not int or not 0 <= q <= 51 for q in qps):
+        raise ValueError("need at least three unique valid QPs")
+    if cfg["ar_teachers"] != ["r3d_18", "mc3_18"] or cfg["ar_evaluators"] != ["r2plus1d_18", "r3d_18"]:
+        raise ValueError("registered AR analyzer roles changed")
+    if cfg["od_teacher"] != "mobilenet" or cfg["od_evaluator"] != "resnet50":
+        raise ValueError("registered OD analyzer roles changed")
+
+
+def run(args) -> dict:
+    cfg = json.loads(args.config.read_text(encoding="utf-8"))
+    validate_config(cfg)
+    if args.split not in ("dev", "test") or args.count < 1 or args.bootstrap is not None and args.bootstrap < 0:
+        raise ValueError("invalid evaluation plan")
+    draws = cfg["bootstrap_draws"] if args.bootstrap is None else args.bootstrap
+    if args.out.exists() and any(args.out.iterdir()):
+        raise ValueError("output must be empty; refusing to mix experiment evidence")
+    args.out.mkdir(parents=True, exist_ok=True)
+    torch.manual_seed(cfg["seed"])
+    np.random.seed(cfg["seed"])
+    torch.set_num_threads(2)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if args.task == "ar":
+        plan, data_meta = ar_plan(args.root, args.split, args.count)
+        teachers = [ActionAnalyzer(name, device) for name in cfg["ar_teachers"]]
+        evaluators = {name: next((m for m in teachers if m.name == name), None) or ActionAnalyzer(name, device)
+                      for name in cfg["ar_evaluators"]}
+    else:
+        if args.annotations is None:
+            raise ValueError("COCO instances annotation file required")
+        plan, data_meta = od_plan(args.root, args.annotations, args.split, args.count)
+        teachers = [DetectionAnalyzer(cfg["od_teacher"], device)]
+        evaluators = {cfg["od_evaluator"]: DetectionAnalyzer(cfg["od_evaluator"], device)}
+    learned = None
+    if args.checkpoint:
+        from .learned import AdaptiveBlendPreprocessor
+        state = torch.load(args.checkpoint, map_location=device, weights_only=True)
+        if state.get("schema") != "adaptive-vcm-blend-v1" or state.get("steps", 0) < 1 or not state.get("train_ids_sha256"):
+            raise ValueError("invalid trained preprocessor checkpoint")
+        learned = AdaptiveBlendPreprocessor(state["width"]).to(device)
+        learned.load_state_dict(state["model"], strict=True)
+        learned.eval()
+    manifest = {"experiment": cfg["experiment"], "task": args.task, "codecs": args.codecs,
+                "quality_axis": "top1" if args.task == "ar" else "COCO mAP@[.50:.95]",
+                "config": cfg, "count": len(plan), "split": args.split, "bootstrap_draws": draws,
+                "ids": [r["id"] for r in plan], "ids_sha256": fingerprint([r["id"] for r in plan]),
+                "device": device, "python": platform.python_version(), "torch": torch.__version__,
+                "code": code_manifest(), "data_metadata": data_meta if args.task == "ar" else {"annotation_sha256": hashlib.sha256(args.annotations.read_bytes()).hexdigest()},
+                "checkpoint_sha256": hashlib.sha256(args.checkpoint.read_bytes()).hexdigest() if args.checkpoint else None,
+                "scope": cfg["scope"], "rate_denominator": "original pre-transform T*H*W pixels",
+                "selection_cost": "all candidate encode/decode and teacher calls included in selection_seconds"}
+    write_json(args.out / "manifest.json", manifest)
+    all_rows, geometry = {codec: [] for codec in args.codecs}, {}
+    for position, item in enumerate(plan):
+        if args.task == "ar":
+            clip = read_video(item["path"], cfg["frames"], cfg["ar_size"], cfg["temporal_stride"])
+        else:
+            clip, geometry[item["image_id"]] = read_image(item, cfg["od_size"])
+        preparation_start = time.perf_counter()
+        if args.task == "ar":
+            source_predictions = [teacher.probabilities(clip) for teacher in teachers]
+            semantic = np.maximum.reduce([normalize_map(teacher.saliency(clip)) for teacher in teachers])
+            protection = action_protection(clip, semantic)
+        else:
+            source_predictions = [teachers[0].predict(clip)]
+            source = source_predictions[0]
+            protection = boxes_to_mask(*clip.shape[1:3], source["boxes"][source["scores"] >= cfg["od_score_threshold"]])
+        preparation_seconds = time.perf_counter() - preparation_start
+        source_hash = hashlib.sha256(clip.tobytes()).hexdigest()
+        for codec_name in args.codecs:
+            for qp in cfg["qps"]:
+                start = time.perf_counter()
+                codec = StandardCodec(codec_name, qp, cfg["preset"], cfg["fps"])
+                anchor, chosen, name, candidates = choose_stream(clip, protection, args.task, codec, cfg,
+                                                                 teachers, source_predictions, learned)
+                seconds = time.perf_counter() - start
+                new_rows = []
+                for arm, result in (("anchor", anchor), ("adaptive", chosen)):
+                    row = {"id": item["id"], "qp": qp, "codec": codec_name, "arm": arm,
+                           "candidate": "identity" if arm == "anchor" else name,
+                           "source_sha256": source_hash, "coded_bytes": result.coded_bytes,
+                           "bpp": reference_bpp(result.coded_bytes, clip.shape),
+                           "stream_sha256": hashlib.sha256(result.data).hexdigest(),
+                           "source_preparation_seconds": preparation_seconds, "selection_seconds": seconds}
+                    if args.task == "ar":
+                        row["correct"] = {key: int(model.probabilities(result.decoded).argmax() == item["label"])
+                                          for key, model in evaluators.items()}
+                    else:
+                        row["predictions"] = _od_predictions(evaluators[cfg["od_evaluator"]].predict(result.decoded), item["image_id"])
+                    if args.save_streams:
+                        path = args.out / "streams" / codec_name / f"{position:05d}-q{qp}-{arm}.{'264' if codec_name == 'h264' else '265'}"
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(result.data)
+                    new_rows.append(row)
+                all_rows[codec_name].extend(new_rows)
+                with (args.out / f"{codec_name}_rows.jsonl").open("a", encoding="utf-8") as handle:
+                    for row in new_rows:
+                        handle.write(json.dumps(row, allow_nan=False) + "\n")
+                with (args.out / "selection_audit.jsonl").open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps({"id": item["id"], "codec": codec_name, "qp": qp,
+                                             "selected": name, "candidates": candidates}, allow_nan=False) + "\n")
+        print(f"[{args.task}] source {position + 1}/{len(plan)} completed", flush=True)
+    results = {}
+    gt = _gt_scaled(data_meta, plan, geometry) if args.task == "od" else None
+    if gt is not None:
+        write_json(args.out / "coco_ground_truth_scaled.json", {"gt": gt, "categories": data_meta["categories"]})
+    for codec, rows in all_rows.items():
+        results[codec] = (_ar_curves(rows, list(evaluators), cfg["qps"], draws, cfg["seed"]) if args.task == "ar"
+                          else _od_curves(rows, cfg["qps"], draws, cfg["seed"], data_meta, gt, codec))
+    decision = {"task": args.task, "quality_axis": manifest["quality_axis"], "results": results,
+                "candidate_counts": {codec: dict(Counter(r["candidate"] for r in rows if r["arm"] == "adaptive"))
+                                     for codec, rows in all_rows.items()},
+                "both_codecs_evaluated": set(args.codecs) == {"h264", "h265"},
+                "screen_passes": set(args.codecs) == {"h264", "h265"} and all(r["screen_passes"] for models in results.values() for r in models.values()),
+                "target_confirmed": False, "scope": cfg["scope"]}
+    write_json(args.out / "summary.json", decision)
+    print(json.dumps(decision, indent=2, allow_nan=False), flush=True)
+    return decision
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--task", choices=["ar", "od"], required=True)
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--annotations", type=Path)
+    parser.add_argument("--config", type=Path, default=ROOT / "configs/v22_screen.json")
+    parser.add_argument("--count", type=int, default=208)
+    parser.add_argument("--split", choices=["dev", "test"], default="dev")
+    parser.add_argument("--codecs", nargs="+", choices=["h264", "h265"], default=["h264", "h265"])
+    parser.add_argument("--bootstrap", type=int)
+    parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--save-streams", action="store_true")
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    if len(set(args.codecs)) != len(args.codecs):
+        parser.error("duplicate codec")
+    run(args)
+
+
+if __name__ == "__main__":
+    main()
