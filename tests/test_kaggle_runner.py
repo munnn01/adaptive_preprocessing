@@ -37,6 +37,17 @@ def test_pool_auth_drops_inherited_other_account_without_printing_secret(tmp_pat
     assert "KAGGLE_KEY" not in env and "KAGGLE_USERNAME" not in env
 
 
+def test_v23_payload_registers_measured_rate_training_and_components(tmp_path):
+    args = argparse.Namespace(commit="b" * 40, slug="v23-test-ar", account="example", recipe="v23",
+                              count=128, steps=1000, bootstrap=2000, task="ar", mode="learned",
+                              seed=302001, directory=tmp_path)
+    runner.prepare(args)
+    notebook = json.loads((tmp_path / "notebook.ipynb").read_text())
+    cell = "".join(notebook["cells"][0]["source"])
+    assert "adaptive_vcm.train_rateaware" in cell and "configs/v23_screen.json" in cell
+    assert "--ablate-learned" in cell
+
+
 def test_kaggle_output_uses_utf8_and_redacts_secret(tmp_path, monkeypatch, capsys):
     pool = tmp_path / "pool.json"
     pool.write_text(json.dumps({"example": "PRIVATE_TEST_VALUE"}))

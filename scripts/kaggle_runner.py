@@ -77,13 +77,19 @@ test -n "$ANN" && test -n "$IMAGES"
 '''
         data_arguments = '--task od --root "$IMAGES" --annotations "$ANN"'
     checkpoint = ""
+    recipe = getattr(args, "recipe", "v22")
+    if recipe not in ("v22", "v23"):
+        raise ValueError("unsupported recipe")
+    config_option = " --config configs/v23_screen.json" if recipe == "v23" else ""
+    trainer = "adaptive_vcm.train_rateaware" if recipe == "v23" else "adaptive_vcm.train"
     if args.mode == "learned":
-        bash += f'python -m adaptive_vcm.train {data_arguments} --count 512 --steps {args.steps} --seed {args.seed} --out "$OUT/train"\n'
+        bash += f'python -m {trainer} {data_arguments}{config_option} --count 512 --steps {args.steps} --seed {args.seed} --out "$OUT/train"\n'
         checkpoint = ' --checkpoint "$OUT/train/preprocessor_last.pth"'
-    bash += f'python -m adaptive_vcm.evaluate {data_arguments} --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap}{checkpoint} --out "$OUT/eval"\n'
+    ablation_option = " --ablate-learned" if recipe == "v23" and args.mode == "learned" else ""
+    bash += f'python -m adaptive_vcm.evaluate {data_arguments}{config_option} --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap}{checkpoint}{ablation_option} --out "$OUT/eval"\n'
     directory = args.directory or ROOT / "outputs/kaggle" / args.slug
     directory.mkdir(parents=True, exist_ok=True)
-    notebook = {"cells": [{"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [],
+    notebook = {"cells": [{"cell_type": "code", "id": "run-" + args.slug[:48], "execution_count": None, "metadata": {}, "outputs": [],
                             "source": bash.splitlines(keepends=True)}],
                 "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}},
                 "nbformat": 4, "nbformat_minor": 5}
@@ -93,7 +99,7 @@ test -n "$ANN" && test -n "$IMAGES"
                 "kernel_sources": [], "competition_sources": [], "model_sources": []}
     (directory / "notebook.ipynb").write_text(json.dumps(notebook, indent=2), encoding="utf-8")
     (directory / "kernel-metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    (directory / "job.json").write_text(json.dumps({"commit": args.commit, "task": args.task, "mode": args.mode,
+    (directory / "job.json").write_text(json.dumps({"commit": args.commit, "task": args.task, "mode": args.mode, "recipe": recipe,
                                                    "steps": args.steps, "count": args.count, "bootstrap": args.bootstrap,
                                                    "seed": args.seed, "handle": metadata["id"], "private": True}, indent=2), encoding="utf-8")
     print(json.dumps({"prepared": str(directory), "handle": metadata["id"], "commit": args.commit}))
@@ -124,6 +130,7 @@ def main():
     parser.add_argument("--slug")
     parser.add_argument("--task", choices=["ar", "od"], default="ar")
     parser.add_argument("--mode", choices=["analytic", "learned"], default="learned")
+    parser.add_argument("--recipe", choices=["v22", "v23"], default="v22")
     parser.add_argument("--commit")
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--count", type=int, default=128)

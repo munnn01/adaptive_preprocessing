@@ -73,6 +73,25 @@ def detection_distance(source: dict, trial: dict, threshold: float = .25) -> flo
     return float(loss / scores[chosen].sum())
 
 
+def relative_guard(task, source_predictions, anchor_predictions, trial_predictions, cfg):
+    """The same label-free constraints serve training probes and selection."""
+    if not (len(source_predictions) == len(anchor_predictions) == len(trial_predictions)):
+        raise ValueError("inconsistent teacher counts")
+    if task == "ar":
+        pairs = [ar_guard(s, a, c, cfg["ar_confidence"])
+                 for s, a, c in zip(source_predictions, anchor_predictions, trial_predictions)]
+        distances = tuple(p[0] for p in pairs)
+        decisions = tuple(bool(p[1] and (not cfg.get("ar_require_anchor_decision", False)
+                                    or a.argmax() == c.argmax()))
+                          for p, a, c in zip(pairs, anchor_predictions, trial_predictions))
+        return distances, decisions
+    if task != "od" or len(source_predictions) != 1:
+        raise ValueError("unsupported task/teacher count")
+    s, a, c = source_predictions[0], anchor_predictions[0], trial_predictions[0]
+    distance = detection_distance(s, c, cfg["od_score_threshold"]) - detection_distance(s, a, cfg["od_score_threshold"])
+    return (distance,), (True,)
+
+
 def select(observations: list[Observation], slack: float, min_savings: float = .01) -> int:
     """Safe fallback; malformed/missing/nonfinite observations fail closed."""
     if not observations or observations[0].name != "identity":

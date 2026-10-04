@@ -1,6 +1,6 @@
 # Adaptive Video Preprocessing for VCM
 
-Bộ preprocessing V22 cho **Action Recognition (AR)** và **Object Detection (OD)**,
+Bộ preprocessing V22/V23 cho **Action Recognition (AR)** và **Object Detection (OD)**,
 phát triển từ bài học V1–V21 và tài liệu [IEEE TCSVT, IEEE TIP, CVPR cùng các
 bài trong LAB](docs/RESEARCH_DESIGN.md). Mục tiêu: **BD-rate < −10% so với từng
 H.264 và H.265**, theo Top-1 của AR và COCO mAP của OD.
@@ -13,8 +13,15 @@ Learned blend chỉ được chọn 5/1.280 điểm AR và 0/1.000 điểm OD; k
 gán toàn bộ mức giảm bitrate cho nhánh learned. Xem [kết quả và giới hạn
 thực nghiệm](docs/RESULTS_v22_2026-10-04.md).
 
+**V23 đã triển khai:** learned policy tối ưu từ byte codec thật bằng SPSA,
+bank mạnh hơn và expert DC ở QP≥45, AR semantic/motion protection mới,
+và đo riêng learned/controls cùng từng QP40/45/50. **64 test pass**; kết quả
+task V23 đang cần lượt Kaggle mới. Xem [thiết kế và cách chạy V23](docs/V23_RATEAWARE_DESIGN.md).
+
 ## Bộ adaptive preprocessor
 
+- [V23 rate-aware policy](adaptive_vcm/rateaware.py) và [trainer measured-codec](adaptive_vcm/train_rateaware.py):
+  7 control, không dùng rate prior của V22; tăng budget học ở QP cao.
 - [Learned multiscale blend](adaptive_vcm/learned.py): mạng nhỏ dự đoán mức
   blend và hỗn hợp Gaussian0.7/1.5/3.0, điều kiện theo QP/codec, có bảo vệ
   semantic và gate theo chuyển động/cắt cảnh.

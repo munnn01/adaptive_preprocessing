@@ -1,5 +1,8 @@
 # Local validation
 
+Latest V23 code: [64-test full suite and measured-codec smoke](V23_VALIDATION.md).
+The historical V22 validation below is retained for provenance.
+
 2026-10-04, Windows CPU, `D:/STUDY/AI/envs/ten_env`, Python3.11,
 PyTorch2.5.1, TorchVision0.20.1, FFmpeg7.1 with libx264/libx265.
 
