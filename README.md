@@ -15,8 +15,9 @@ thực nghiệm](docs/RESULTS_v22_2026-10-04.md).
 
 **V23 đã triển khai:** learned policy tối ưu từ byte codec thật bằng SPSA,
 bank mạnh hơn và expert DC ở QP≥45, AR semantic/motion protection mới,
-và đo riêng learned/controls cùng từng QP40/45/50. **64 test pass**; kết quả
-task V23 đang cần lượt Kaggle mới. Xem [thiết kế và cách chạy V23](docs/V23_RATEAWARE_DESIGN.md).
+và đo riêng learned/controls cùng từng QP40/45/50. **64 test pass**;
+hai [notebook V23 private](docs/V23_KAGGLE_EXECUTION.md) đã được Kaggle nhận
+và đang RUNNING; chưa có kết quả task V23. Xem [thiết kế và cách chạy V23](docs/V23_RATEAWARE_DESIGN.md).
 
 ## Bộ adaptive preprocessor
 
