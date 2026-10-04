@@ -1,6 +1,7 @@
 import argparse
 import importlib.util
 import json
+import subprocess
 
 import pytest
 
@@ -34,4 +35,21 @@ def test_pool_auth_drops_inherited_other_account_without_printing_secret(tmp_pat
     env, secret = runner.pool_environment(pool, "example")
     assert env["KAGGLE_API_TOKEN"] == secret == "PRIVATE_TEST_VALUE"
     assert "KAGGLE_KEY" not in env and "KAGGLE_USERNAME" not in env
+
+
+def test_kaggle_output_uses_utf8_and_redacts_secret(tmp_path, monkeypatch, capsys):
+    pool = tmp_path / "pool.json"
+    pool.write_text(json.dumps({"example": "PRIVATE_TEST_VALUE"}))
+
+    def completed(command, **kwargs):
+        assert command[1:3] == ["-m", "kaggle"]
+        assert kwargs["env"]["PYTHONUTF8"] == "1"
+        assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8"
+        assert kwargs["encoding"] == "utf-8" and kwargs["errors"] == "replace"
+        return subprocess.CompletedProcess(command, 0, "Hoàn tất — ✓\n", "PRIVATE_TEST_VALUE\n")
+
+    monkeypatch.setattr(runner.subprocess, "run", completed)
+    output = runner.kaggle_call(["kernels", "status", "example/v22-test"], pool, "example")
+    assert "Hoàn tất — ✓" in output and "[REDACTED]" in output
+    assert "PRIVATE_TEST_VALUE" not in capsys.readouterr().out
 

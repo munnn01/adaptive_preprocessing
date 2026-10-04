@@ -5,8 +5,13 @@ phát triển từ bài học V1–V21 và tài liệu [IEEE TCSVT, IEEE TIP, CV
 bài trong LAB](docs/RESEARCH_DESIGN.md). Mục tiêu: **BD-rate < −10% so với từng
 H.264 và H.265**, theo Top-1 của AR và COCO mAP của OD.
 
-**Trạng thái:** có code và kiểm thử; chưa có kết quả task thực nghiệm V22 để
-tuyên bố đạt mục tiêu. Kết quả cũ và con số từ bài báo không phải kết quả V22.
+**Trạng thái 2026-10-04:** hai lượt Kaggle V22 đã hoàn tất và được kiểm tra
+từ output từng source. AR/r2plus1d_18 đạt BD-rate **−5,92% / −3,98%**;
+OD/ResNet50 đạt **−9,66% / −6,57%** (H.264 / H.265).
+**Chưa đạt mục tiêu chung** và còn giảm chất lượng quá gate ở một số QP.
+Learned blend chỉ được chọn 5/1.280 điểm AR và 0/1.000 điểm OD; không thể
+gán toàn bộ mức giảm bitrate cho nhánh learned. Xem [kết quả và giới hạn
+thực nghiệm](docs/RESULTS_v22_2026-10-04.md).
 
 ## Bộ adaptive preprocessor
 

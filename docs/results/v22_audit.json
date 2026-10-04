@@ -1,0 +1,725 @@
+{
+  "experiment_commit": "14b1e21d9f3e899484d6abfda66aece25e8c4d82",
+  "checked_date": "2026-10-04 Asia/Bangkok",
+  "scope": "Recomputation of original fixed development runs; no fresh GPU experiment, no independent confirmation.",
+  "tasks": {
+    "ar": {
+      "count": 128,
+      "bootstrap": 2000,
+      "checkpoint_steps": 1000,
+      "training_rows": 1000,
+      "archive_verified_files": 8,
+      "checkpoint_sha256": "0b3c1219a527c393494e9cb9eb231f640a133123b0c79c340bde1feaa4e6f5df",
+      "source_ids_sha256": "2bbd7278cd4cf1d7d73920312128e0b63985550a3b9d0b71f67b4162d29f2c02",
+      "no_train_dev_overlap": true,
+      "immutable_source_verified": true,
+      "exit_status": 0,
+      "learned_component": {
+        "observed": 1280,
+        "at_least_1pct_bit_savings": 36,
+        "teacher_feasible_and_bit_saving": 18,
+        "selected": 5,
+        "mean_same_qp_rate_pct": -0.02578264263459216
+      },
+      "results": {
+        "h264/r2plus1d_18": {
+          "bd_rate_pct": -5.924752411258261,
+          "pchip_bd_rate_pct": -4.836049639644166,
+          "bd_quality_pp": 2.0523566023795374,
+          "worst_qp_gap_pp": -3.125,
+          "ci": {
+            "lo": -10.984706896912856,
+            "hi": -1.0691072889713682,
+            "draws": 2000,
+            "finite_draws": 2000,
+            "finite_fraction": 1.0,
+            "method": "paired_source_video_bootstrap"
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": false,
+            "pchip_bd_rate_lt_minus10": false,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": false,
+            "same_qp_rate_nonincrease": true
+          },
+          "screen_passes": false,
+          "curves": {
+            "anchor": {
+              "bpp": [
+                0.26174306869506836,
+                0.15475988388061523,
+                0.09757661819458008,
+                0.06599092483520508,
+                0.048400163650512695
+              ],
+              "quality": [
+                0.6953125,
+                0.6015625,
+                0.4609375,
+                0.3203125,
+                0.09375
+              ]
+            },
+            "adaptive": {
+              "bpp": [
+                0.20836997032165527,
+                0.13457274436950684,
+                0.09001564979553223,
+                0.063232421875,
+                0.04764294624328613
+              ],
+              "quality": [
+                0.671875,
+                0.5703125,
+                0.4765625,
+                0.3203125,
+                0.09375
+              ]
+            }
+          }
+        },
+        "h264/r3d_18": {
+          "bd_rate_pct": -10.545359824042333,
+          "pchip_bd_rate_pct": -10.270800676439999,
+          "bd_quality_pp": 3.992829529745064,
+          "worst_qp_gap_pp": -0.78125,
+          "ci": {
+            "lo": -13.930478821228066,
+            "hi": -7.360847893206873,
+            "draws": 2000,
+            "finite_draws": 2000,
+            "finite_fraction": 1.0,
+            "method": "paired_source_video_bootstrap"
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": false,
+            "same_qp_rate_nonincrease": true
+          },
+          "screen_passes": false,
+          "curves": {
+            "anchor": {
+              "bpp": [
+                0.26174306869506836,
+                0.15475988388061523,
+                0.09757661819458008,
+                0.06599092483520508,
+                0.048400163650512695
+              ],
+              "quality": [
+                0.703125,
+                0.609375,
+                0.46875,
+                0.2734375,
+                0.109375
+              ]
+            },
+            "adaptive": {
+              "bpp": [
+                0.20836997032165527,
+                0.13457274436950684,
+                0.09001564979553223,
+                0.063232421875,
+                0.04764294624328613
+              ],
+              "quality": [
+                0.7109375,
+                0.6015625,
+                0.484375,
+                0.3046875,
+                0.1171875
+              ]
+            }
+          }
+        },
+        "h265/r2plus1d_18": {
+          "bd_rate_pct": -3.9762200596235586,
+          "pchip_bd_rate_pct": -4.4488016239080865,
+          "bd_quality_pp": 2.325131606281535,
+          "worst_qp_gap_pp": -3.90625,
+          "ci": {
+            "lo": -7.099415890451481,
+            "hi": 0.33722783728871797,
+            "draws": 2000,
+            "finite_draws": 2000,
+            "finite_fraction": 1.0,
+            "method": "paired_source_video_bootstrap"
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": false,
+            "pchip_bd_rate_lt_minus10": false,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": false,
+            "same_qp_rate_nonincrease": true
+          },
+          "screen_passes": false,
+          "curves": {
+            "anchor": {
+              "bpp": [
+                0.29093408584594727,
+                0.18945527076721191,
+                0.13475298881530762,
+                0.1050577163696289,
+                0.09048819541931152
+              ],
+              "quality": [
+                0.7109375,
+                0.6015625,
+                0.4921875,
+                0.21875,
+                0.0625
+              ]
+            },
+            "adaptive": {
+              "bpp": [
+                0.23816275596618652,
+                0.17179131507873535,
+                0.12877798080444336,
+                0.10404539108276367,
+                0.09030866622924805
+              ],
+              "quality": [
+                0.71875,
+                0.6015625,
+                0.453125,
+                0.25,
+                0.078125
+              ]
+            }
+          }
+        },
+        "h265/r3d_18": {
+          "bd_rate_pct": -6.457911218735868,
+          "pchip_bd_rate_pct": -6.148529631048465,
+          "bd_quality_pp": 3.552902368848496,
+          "worst_qp_gap_pp": 0.0,
+          "ci": {
+            "lo": -8.64829398161306,
+            "hi": -4.035945469766849,
+            "draws": 2000,
+            "finite_draws": 2000,
+            "finite_fraction": 1.0,
+            "method": "paired_source_video_bootstrap"
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": false,
+            "pchip_bd_rate_lt_minus10": false,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "screen_passes": false,
+          "curves": {
+            "anchor": {
+              "bpp": [
+                0.29093408584594727,
+                0.18945527076721191,
+                0.13475298881530762,
+                0.1050577163696289,
+                0.09048819541931152
+              ],
+              "quality": [
+                0.6640625,
+                0.578125,
+                0.46875,
+                0.2734375,
+                0.046875
+              ]
+            },
+            "adaptive": {
+              "bpp": [
+                0.23816275596618652,
+                0.17179131507873535,
+                0.12877798080444336,
+                0.10404539108276367,
+                0.09030866622924805
+              ],
+              "quality": [
+                0.671875,
+                0.578125,
+                0.5,
+                0.296875,
+                0.0546875
+              ]
+            }
+          }
+        }
+      },
+      "alpha_mean_first100": 0.006709746370611356,
+      "alpha_mean_last100": 0.007097258678369229,
+      "train_mean_overhead_last100_pct": 0.018670082501563323,
+      "independent_selection_checks": {
+        "selection_points_verified": 1280,
+        "minimum_byte_policy_verified": true,
+        "selected_stream_hashes_match_audit": true,
+        "all_training_numbers_finite": true,
+        "training_seed": 302001,
+        "evaluation_bootstrap_seed": 20261004,
+        "config_hash_verified": true,
+        "local_imported_code_matches_experiment": true
+      },
+      "selection_diagnostics": {
+        "h264": {
+          "mean_search_seconds_per_point": 2.794934605221868,
+          "median_search_seconds_per_point": 2.7821088635000706,
+          "selected_candidate_counts": {
+            "area96": 83,
+            "area112": 80,
+            "blur20": 36,
+            "learned_blend": 4,
+            "identity": 370,
+            "blur40": 26,
+            "area112_up": 22,
+            "protected_strong": 5,
+            "protected_temporal": 8,
+            "protected_mild": 6
+          },
+          "ar_flips_by_qp": {
+            "r2plus1d_18": [
+              {
+                "qp": 30,
+                "gains": {
+                  "area112": 1
+                },
+                "losses": {
+                  "blur20": 1,
+                  "area112": 2,
+                  "area112_up": 1
+                },
+                "net_correct": -3
+              },
+              {
+                "qp": 35,
+                "gains": {
+                  "area96": 1,
+                  "area112": 1
+                },
+                "losses": {
+                  "blur20": 1,
+                  "area96": 2,
+                  "area112": 2,
+                  "blur40": 1
+                },
+                "net_correct": -4
+              },
+              {
+                "qp": 40,
+                "gains": {
+                  "area112_up": 1,
+                  "area112": 2,
+                  "area96": 1
+                },
+                "losses": {
+                  "area112": 1,
+                  "protected_temporal": 1
+                },
+                "net_correct": 2
+              },
+              {
+                "qp": 45,
+                "gains": {
+                  "learned_blend": 1,
+                  "area96": 1
+                },
+                "losses": {
+                  "area96": 1,
+                  "area112": 1
+                },
+                "net_correct": 0
+              },
+              {
+                "qp": 50,
+                "gains": {},
+                "losses": {},
+                "net_correct": 0
+              }
+            ],
+            "r3d_18": [
+              {
+                "qp": 30,
+                "gains": {
+                  "blur20": 1,
+                  "blur40": 1
+                },
+                "losses": {
+                  "area112": 1
+                },
+                "net_correct": 1
+              },
+              {
+                "qp": 35,
+                "gains": {},
+                "losses": {
+                  "protected_mild": 1
+                },
+                "net_correct": -1
+              },
+              {
+                "qp": 40,
+                "gains": {
+                  "blur20": 1,
+                  "area112": 1
+                },
+                "losses": {},
+                "net_correct": 2
+              },
+              {
+                "qp": 45,
+                "gains": {
+                  "area96": 1,
+                  "area112": 1,
+                  "blur40": 2
+                },
+                "losses": {},
+                "net_correct": 4
+              },
+              {
+                "qp": 50,
+                "gains": {
+                  "area96": 1
+                },
+                "losses": {},
+                "net_correct": 1
+              }
+            ]
+          }
+        },
+        "h265": {
+          "mean_search_seconds_per_point": 3.5639329518765748,
+          "median_search_seconds_per_point": 3.513125751499956,
+          "selected_candidate_counts": {
+            "area96": 69,
+            "area112": 76,
+            "blur40": 25,
+            "identity": 388,
+            "blur20": 44,
+            "area112_up": 22,
+            "protected_temporal": 5,
+            "protected_mild": 5,
+            "learned_blend": 1,
+            "protected_strong": 5
+          },
+          "ar_flips_by_qp": {
+            "r2plus1d_18": [
+              {
+                "qp": 30,
+                "gains": {
+                  "blur20": 1,
+                  "area96": 1,
+                  "area112": 1
+                },
+                "losses": {
+                  "area96": 2
+                },
+                "net_correct": 1
+              },
+              {
+                "qp": 35,
+                "gains": {
+                  "protected_temporal": 1,
+                  "area112_up": 1,
+                  "area96": 1
+                },
+                "losses": {
+                  "area96": 1,
+                  "blur20": 1,
+                  "protected_mild": 1
+                },
+                "net_correct": 0
+              },
+              {
+                "qp": 40,
+                "gains": {
+                  "area112": 1
+                },
+                "losses": {
+                  "area112": 2,
+                  "blur40": 2,
+                  "blur20": 1,
+                  "protected_temporal": 1
+                },
+                "net_correct": -5
+              },
+              {
+                "qp": 45,
+                "gains": {
+                  "area112": 1,
+                  "protected_strong": 1,
+                  "blur20": 3
+                },
+                "losses": {
+                  "blur40": 1
+                },
+                "net_correct": 4
+              },
+              {
+                "qp": 50,
+                "gains": {
+                  "area112": 1,
+                  "blur20": 1
+                },
+                "losses": {},
+                "net_correct": 2
+              }
+            ],
+            "r3d_18": [
+              {
+                "qp": 30,
+                "gains": {
+                  "area112": 2
+                },
+                "losses": {
+                  "area112": 1
+                },
+                "net_correct": 1
+              },
+              {
+                "qp": 35,
+                "gains": {
+                  "area112": 1
+                },
+                "losses": {
+                  "blur40": 1
+                },
+                "net_correct": 0
+              },
+              {
+                "qp": 40,
+                "gains": {
+                  "area96": 1,
+                  "area112_up": 1,
+                  "blur40": 1,
+                  "area112": 1
+                },
+                "losses": {},
+                "net_correct": 4
+              },
+              {
+                "qp": 45,
+                "gains": {
+                  "blur40": 1,
+                  "protected_strong": 1,
+                  "area112_up": 1
+                },
+                "losses": {},
+                "net_correct": 3
+              },
+              {
+                "qp": 50,
+                "gains": {
+                  "blur20": 1
+                },
+                "losses": {},
+                "net_correct": 1
+              }
+            ]
+          }
+        }
+      },
+      "learned_identity_hash_counts": {
+        "observed": 1280,
+        "same_stream_hash_as_identity": 997,
+        "same_byte_count_as_identity": 1009
+      }
+    },
+    "od": {
+      "count": 100,
+      "bootstrap": 200,
+      "checkpoint_steps": 1000,
+      "training_rows": 1000,
+      "archive_verified_files": 9,
+      "checkpoint_sha256": "c2bd1e6676291b538f36f3f96c923fa89c168c6b1b4760216a7bc5aace2ec738",
+      "source_ids_sha256": "bea23dc15f8bdae18e47e204af8a1637d3e96ae5f75d4073894bf35436629adf",
+      "no_train_dev_overlap": true,
+      "immutable_source_verified": true,
+      "exit_status": 0,
+      "learned_component": {
+        "observed": 980,
+        "at_least_1pct_bit_savings": 0,
+        "teacher_feasible_and_bit_saving": 0,
+        "selected": 0,
+        "mean_same_qp_rate_pct": -0.00027087764668053837
+      },
+      "results": {
+        "h264/resnet50": {
+          "bd_rate_pct": -9.656247207634994,
+          "pchip_bd_rate_pct": -9.788076794284864,
+          "bd_quality_pp": 1.6666820977109882,
+          "worst_qp_gap_pp": -1.0227104209124551,
+          "ci": {
+            "lo": -14.508320386527373,
+            "hi": -4.750196884137444,
+            "p_lt_zero": 1.0,
+            "n_draws": 200,
+            "method": "paired_image_bootstrap_with_replacement",
+            "finite_fraction": 1.0
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": false,
+            "pchip_bd_rate_lt_minus10": false,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": false,
+            "same_qp_rate_nonincrease": true
+          },
+          "screen_passes": false,
+          "curves": {
+            "anchor": {
+              "bpp": [
+                0.8103,
+                0.49599609375,
+                0.30455468750000003,
+                0.18804843750000003,
+                0.12838203125000003
+              ],
+              "quality": [
+                0.34312529064759256,
+                0.29953336960194016,
+                0.22642498679221787,
+                0.12594540855567687,
+                0.05962196008951942
+              ]
+            },
+            "adaptive": {
+              "bpp": [
+                0.72127890625,
+                0.43926718749999993,
+                0.2717234375,
+                0.1658640625,
+                0.11794375
+              ],
+              "quality": [
+                0.33943670305666046,
+                0.3013489192074819,
+                0.22540894965930625,
+                0.11571830434655232,
+                0.06958799111995453
+              ]
+            }
+          }
+        },
+        "h265/resnet50": {
+          "bd_rate_pct": -6.57018538115115,
+          "pchip_bd_rate_pct": -6.769511840711186,
+          "bd_quality_pp": 1.689609097650933,
+          "worst_qp_gap_pp": -1.0490143115695072,
+          "ci": {
+            "lo": -9.94542060057295,
+            "hi": -1.9347313706455516,
+            "p_lt_zero": 1.0,
+            "n_draws": 200,
+            "method": "paired_image_bootstrap_with_replacement",
+            "finite_fraction": 1.0
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": false,
+            "pchip_bd_rate_lt_minus10": false,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": false,
+            "same_qp_rate_nonincrease": true
+          },
+          "screen_passes": false,
+          "curves": {
+            "anchor": {
+              "bpp": [
+                0.8377421875000001,
+                0.57078671875,
+                0.4031109375,
+                0.29978125,
+                0.2398453125
+              ],
+              "quality": [
+                0.33247050082310065,
+                0.30724170760852465,
+                0.24641100408164657,
+                0.13652727893884659,
+                0.061235694178795354
+              ]
+            },
+            "adaptive": {
+              "bpp": [
+                0.7431328124999999,
+                0.50798046875,
+                0.36782265625,
+                0.28424609375,
+                0.23139531249999998
+              ],
+              "quality": [
+                0.3474243142110647,
+                0.30455847323056773,
+                0.2359208609659515,
+                0.14212710104089812,
+                0.058394681490276885
+              ]
+            }
+          }
+        }
+      },
+      "alpha_mean_first100": 0.021679802192375065,
+      "alpha_mean_last100": 0.0018368180100878817,
+      "train_mean_overhead_last100_pct": 0.0,
+      "independent_selection_checks": {
+        "selection_points_verified": 1000,
+        "minimum_byte_policy_verified": true,
+        "selected_stream_hashes_match_audit": true,
+        "all_training_numbers_finite": true,
+        "training_seed": 302001,
+        "evaluation_bootstrap_seed": 20261004,
+        "config_hash_verified": true,
+        "local_imported_code_matches_experiment": true
+      },
+      "selection_diagnostics": {
+        "h264": {
+          "mean_search_seconds_per_point": 1.3352872568159988,
+          "median_search_seconds_per_point": 1.3529676269999982,
+          "selected_candidate_counts": {
+            "identity": 200,
+            "background4": 44,
+            "background12": 140,
+            "background8": 72,
+            "background2": 44
+          },
+          "ar_flips_by_qp": {}
+        },
+        "h265": {
+          "mean_search_seconds_per_point": 1.7449266424500087,
+          "median_search_seconds_per_point": 1.7593027259999872,
+          "selected_candidate_counts": {
+            "identity": 217,
+            "background12": 131,
+            "background4": 50,
+            "background2": 29,
+            "background8": 73
+          },
+          "ar_flips_by_qp": {}
+        }
+      },
+      "learned_identity_hash_counts": {
+        "observed": 980,
+        "same_stream_hash_as_identity": 976,
+        "same_byte_count_as_identity": 976
+      }
+    }
+  },
+  "audit_passed": true,
+  "target_met": false,
+  "audit_method": {
+    "ar": "Original fixed metrics: all 2000 paired source draws per analyzer/codec recomputed.",
+    "od": "All 200 paired image draws per codec recomputed with pycocotools image-match cache and COCOeval.accumulate (all area, maxDets100).",
+    "od_cache_verified_against_full_cocoeval": {
+      "first_draws_per_arm_qp_codec": 2,
+      "map_comparisons": 40,
+      "absolute_tolerance": 1e-12
+    },
+    "ci_entire_metadata_matches_kaggle": true,
+    "script_hashes": {
+      "audit_v22.py": "b828f203eabb764972d3ea0b5a837ce09caaea76a5dafd8037ea4ea1675ef993",
+      "cached_coco_audit.py": "3864e3ced16a716c32052fe2edc4ca3933cebebbaea9e3ee1691484c4eda72dc",
+      "run_cached_audit.py": "1878bfbaf98b2192de509da073e653e8e576cc459445f74877168a9d521b07bc",
+      "check_evidence.py": "6647162b57d007036cd540279bf53a0d2a1a248eead94dc180d4b6a7aabbdcbc",
+      "diagnostics.py": "4086a1925c16965284b04ff745d2d981062159db7480d48c1a9468dbcff7981f",
+      "export_report.py": "1b779f4d7a8dccbf7acb9534d6df88e7367bb4ab255ce136213d563712836dde"
+    }
+  }
+}

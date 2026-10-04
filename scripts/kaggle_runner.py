@@ -102,9 +102,14 @@ test -n "$ANN" && test -n "$IMAGES"
 
 def kaggle_call(arguments, pool, account):
     environment, secret = pool_environment(pool, account)
+    environment["PYTHONUTF8"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
     command = [sys.executable, "-m", "kaggle", *arguments]
-    result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(command, env=environment, capture_output=True, text=True,
+                            encoding="utf-8", errors="replace", timeout=300)
     safe_output = (result.stdout + result.stderr).replace(secret, "[REDACTED]")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     print(safe_output, end="" if safe_output.endswith("\n") else "\n")
     if result.returncode:
         raise RuntimeError(f"Kaggle command failed (exit {result.returncode}); no success inferred")

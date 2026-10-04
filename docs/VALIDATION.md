@@ -22,3 +22,10 @@ The AR/OD integration tests use tiny deterministic task fixtures, so they
 verify software execution, pairing and reporting only. They do not measure
 pretrained-model task accuracy. No local result proves the BD-rate target.
 Actual Kinetics/COCO experiments must run separately on Kaggle.
+
+After the first GPU runs, the focused Kaggle runner suite reports **4 passed**.
+The added regression test verifies explicit UTF-8 subprocess configuration,
+Unicode output handling and credential redaction for Windows log collection.
+The full 46-test baseline above records validation of the original experiment
+commit; the unchanged suite was not rerun solely for a download encoding fix.
+See [actual V22 development results](RESULTS_v22_2026-10-04.md) for task metrics.
