@@ -73,6 +73,20 @@ def test_v25_payload_separates_collection_and_replay_budget(tmp_path):
     assert '--split test' not in cell
 
 
+def test_v26_payload_streams_actual_collection_and_train_cv_without_fake_steps(tmp_path):
+    args = argparse.Namespace(commit='e' * 40, slug='v26-test-ar', account='example', recipe='v26',
+                              count=16, steps=1500, measurements=80, train_count=80, bootstrap=0,
+                              task='ar', mode='learned', seed=302101, directory=tmp_path)
+    runner.prepare(args)
+    cell = ''.join(json.loads((tmp_path / 'notebook.ipynb').read_text())['cells'][0]['source'])
+    compile(cell, '<V26 notebook>', 'exec')
+    assert 'subprocess.Popen' in cell and 'flush=True' in cell
+    assert 'adaptive_vcm.train_utility' in cell and 'configs/v26_screen.json' in cell
+    assert '--count 80 --measurements 80' in cell and '--steps' not in cell
+    assert '--split test' not in cell and '--ablate-learned' in cell
+    assert json.loads((tmp_path / 'job.json').read_text())['steps'] is None
+
+
 def test_kaggle_output_uses_utf8_and_redacts_secret(tmp_path, monkeypatch, capsys):
     pool = tmp_path / "pool.json"
     pool.write_text(json.dumps({"example": "PRIVATE_TEST_VALUE"}))

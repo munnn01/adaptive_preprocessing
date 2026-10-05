@@ -94,6 +94,12 @@ thua TRAIN group-static trên toàn pilot và chưa đạt quality gate. Xem
 [báo cáo V25 pilot](docs/RESULTS_V25_PILOT_2026-10-05.md).
 Run DEV128 vẫn đang chạy; chưa xác nhận mục tiêu BD-rate hoặc TEST.
 
+V26 thử nghiệm bổ sung16 mức lọc luma/DC/exposure giữ nguyên resolution, và
+policy41D học byte tiết kiệm **thêm trên controls** bằng TRAIN CV tách source.
+Bank có33 action ngoài identity; policy vẫn chỉ đề xuất3. Xem
+[thiết kế và cách chạy V26](docs/V26_DESIGN.md). Kết quả TRAIN/synthetic không
+được dùng để xác nhận accuracy hay mục tiêu BD-rate.
+
 Token chỉ đọc từ file ngoài repo và truyền qua environment subprocess.
 Notebook private, free T4, code clone đúng full commit SHA; không chứa token.
 

@@ -13,7 +13,7 @@ import torch
 from torch import nn
 
 from .codec import reference_bpp
-from .data import partition
+from .data import fingerprint, partition
 from .ranking import CONTEXT_DIM as LEGACY_DIM, CONTEXT_SCHEMA as LEGACY_SCHEMA, build_rank_context
 
 
@@ -193,8 +193,14 @@ class UtilityRankPreprocessor(nn.Module):
         return [int(i + 1) for i in np.argsort(-scores, kind="stable")[:top_k]]
 
     def render(self, clip, protection, qp, action_index):
-        from .task_bank import build_task_bank
-        bank = build_task_bank(clip, protection, qp)
+        from .task_bank import ACTION_NAMES as old_names, build_task_bank
+        from .stabilized_bank import ACTION_NAMES as new_names, build_stabilized_bank
+        if self.action_names == old_names:
+            bank = build_task_bank(clip, protection, qp)
+        elif self.action_names == new_names:
+            bank = build_stabilized_bank(clip, protection, qp)
+        else:
+            raise ValueError('utility checkpoint has no registered pixel bank')
         if tuple(candidate.name for candidate in bank) != self.action_names:
             raise ValueError("utility checkpoint bank differs from executable bank")
         if type(action_index) is not int or not 1 <= action_index < len(bank):
@@ -284,16 +290,32 @@ def load_record_directory(path: Path):
     measured_path = path / "measurements.jsonl"
     if hashlib.sha256(measured_path.read_bytes()).hexdigest() != manifest.get("measurements_sha256"):
         raise ValueError("TRAIN measurement archive hash differs from manifest")
-    if manifest.get("context_schema") != LEGACY_SCHEMA or manifest.get("context_dim") != LEGACY_DIM:
+    legacy = manifest.get('context_schema') == LEGACY_SCHEMA and manifest.get('context_dim') == LEGACY_DIM
+    compact = manifest.get('context_schema') == CONTEXT_SCHEMA and manifest.get('context_dim') == CONTEXT_DIM
+    if not (legacy or compact):
         raise ValueError("unsupported replay measurement context")
     bank_path = Path(__file__).with_name("task_bank.py")
     bank_hash = hashlib.sha256(bank_path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     if manifest["code"]["files_sha256"].get("adaptive_vcm/task_bank.py") != bank_hash:
         raise ValueError("cached measurement bank code differs from executable bank")
     names = tuple(manifest["action_names"])
+    from .task_bank import ACTION_NAMES as old_names
+    from .stabilized_bank import ACTION_NAMES as new_names
+    if names not in (old_names, new_names):
+        raise ValueError('unregistered cached action bank')
+    if names == new_names:
+        new_path = Path(__file__).with_name('stabilized_bank.py')
+        new_hash = hashlib.sha256(new_path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+        if manifest['code']['files_sha256'].get('adaptive_vcm/stabilized_bank.py') != new_hash:
+            raise ValueError('cached stabilization bank differs from executable bank')
     rows = list(map(json.loads, measured_path.read_text(encoding="utf-8").splitlines()))
     if len(rows) != manifest["measurements"] or any(partition(row["source_id"]) != "train" for row in rows):
         raise ValueError("incomplete or non-TRAIN measured records")
+    if (manifest.get('task') != 'ar' or not manifest['config'].get('ar_require_anchor_decision')
+            or manifest['config']['min_savings'] != .01
+            or fingerprint(manifest['train_ids']) != manifest['train_ids_sha256']
+            or any(r['source_id'] not in manifest['train_ids'] for r in rows)):
+        raise ValueError('cached source/guard training protocol mismatch')
     x, safety, rates, ids, sizes = [], [], [], [], []
     from .ranking import measurement_targets
     for row in rows:
@@ -306,26 +328,49 @@ def load_record_directory(path: Path):
         bpp = reference_bpp(size, shape)
         if not np.isclose(bpp, row["actual_anchor_bpp"], atol=1e-12, rtol=1e-12):
             raise ValueError("measured anchor bpp differs from original-pixel denominator")
-        x.append(compact_context(row["context"], bpp))
+        x.append(compact_context(row['context'], bpp) if legacy else _contexts(row['context'])[0])
+        if compact and not np.isclose(np.expm1(x[-1][-1]), bpp, atol=1e-12, rtol=1e-12):
+            raise ValueError('compact context anchor rate differs from measured bytes')
         safe, rate, _ = measurement_targets(row["actions"], slack=manifest["config"]["ar_kl_slack"],
                                             min_savings=manifest["config"]["min_savings"])
         safety.append(safe)
         rates.append(rate)
         ids.append(row["source_id"])
         sizes.append(size)
+    baseline = None
+    if compact:
+        from .selection import Observation, select
+        baseline = []
+        for row in rows:
+            controls = row['controls']
+            winner = select([Observation(r['name'], r['coded_bytes'], tuple(r['distances']), tuple(r['decisions']))
+                             for r in controls], manifest['config']['ar_kl_slack'], .01)
+            ratio = np.log(controls[winner]['coded_bytes'] / row['actions'][0]['coded_bytes'])
+            if not np.isclose(ratio, row['baseline_log_rate'], atol=1e-12, rtol=1e-12):
+                raise ValueError('cached marginal baseline differs from guarded controls')
+            baseline.append(ratio)
+        baseline = np.asarray(baseline)
     return {"context": np.stack(x), "safety": np.stack(safety), "log_rate": np.stack(rates),
+            'baseline_log_rate': baseline,
             "source_ids": ids, "action_names": names, "anchor_bytes": np.asarray(sizes),
             "manifest": manifest, "measurements_sha256": hashlib.sha256(measured_path.read_bytes()).hexdigest()}
 
 
 def utility_checkpoint(model, *, training_config, provenance):
-    return {**model.checkpoint_state(), "training_config": training_config, "provenance": provenance}
+    measured = provenance['measurement_manifest']
+    return {**model.checkpoint_state(), 'training_config': training_config, 'provenance': provenance,
+            'fit_method': 'sourceblocked_train_cv_ridge', 'measurements': measured['measurements'],
+            'train_ids_sha256': measured['train_ids_sha256']}
 
 
 def load_utility_preprocessor(state, task="ar", action_names=None):
     if action_names is None:
-        from .task_bank import ACTION_NAMES
-        action_names = ACTION_NAMES
+        from .task_bank import ACTION_NAMES as old_names
+        from .stabilized_bank import ACTION_NAMES as new_names
+        saved_names = tuple(state.get('action_names', ()))
+        if saved_names not in (old_names, new_names):
+            raise ValueError('utility checkpoint has no registered pixel bank')
+        action_names = saved_names
     if (state.get("schema") != UtilityRankPreprocessor.schema or task != "ar" or state.get("task") != "ar"
             or state.get("context_schema") != CONTEXT_SCHEMA or state.get("context_dim") != CONTEXT_DIM
             or tuple(state.get("action_names", ())) != tuple(action_names)):
@@ -357,10 +402,12 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     bundle = load_record_directory(args.records)
     model, report = fit_utility_model(bundle["context"], bundle["safety"], bundle["log_rate"],
-        bundle["source_ids"], bundle["action_names"], anchor_bytes=bundle["anchor_bytes"])
+        bundle["source_ids"], bundle["action_names"], anchor_bytes=bundle["anchor_bytes"],
+        baseline_log_rate=bundle['baseline_log_rate'])
     (args.out / "cv_diagnostics.json").write_text(json.dumps(report, indent=2, allow_nan=False), encoding="utf-8")
     provenance = {"source_measurements_sha256": bundle["measurements_sha256"],
                   "measurement_config": bundle["manifest"]["config"],
+                  'measurement_manifest': bundle['manifest'],
                   "measurement_code": bundle["manifest"]["code"], "cv": report}
     torch.save(utility_checkpoint(model, training_config=bundle["manifest"]["config"], provenance=provenance),
                args.out / "preprocessor_last.pth")
