@@ -314,13 +314,22 @@ def load_record_directory(path: Path):
     names = tuple(manifest["action_names"])
     from .task_bank import ACTION_NAMES as old_names
     from .stabilized_bank import ACTION_NAMES as new_names
+    anchor_bank = False
     if names not in (old_names, new_names):
-        raise ValueError('unregistered cached action bank')
-    if names == new_names:
+        from .anchor_bank import ACTION_NAMES as anchor_names
+        if names != anchor_names:
+            raise ValueError('unregistered cached action bank')
+        anchor_bank = True
+    if names == new_names or anchor_bank:
         new_path = Path(__file__).with_name('stabilized_bank.py')
         new_hash = hashlib.sha256(new_path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
         if manifest['code']['files_sha256'].get('adaptive_vcm/stabilized_bank.py') != new_hash:
             raise ValueError('cached stabilization bank differs from executable bank')
+    if anchor_bank:
+        anchor_path = Path(__file__).with_name('anchor_bank.py')
+        anchor_hash = hashlib.sha256(anchor_path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+        if manifest['code']['files_sha256'].get('adaptive_vcm/anchor_bank.py') != anchor_hash:
+            raise ValueError('cached anchor bank differs from executable bank')
     rows = list(map(json.loads, measured_path.read_text(encoding="utf-8").splitlines()))
     if len(rows) != manifest["measurements"] or any(partition(row["source_id"]) != "train" for row in rows):
         raise ValueError("incomplete or non-TRAIN measured records")
@@ -329,6 +338,22 @@ def load_record_directory(path: Path):
             or fingerprint(manifest['train_ids']) != manifest['train_ids_sha256']
             or any(r['source_id'] not in manifest['train_ids'] for r in rows)):
         raise ValueError('cached source/guard training protocol mismatch')
+    if anchor_bank:
+        cfg = manifest['config']
+        expected = {(identifier, codec, qp) for identifier in manifest['train_ids']
+                    for codec in ('h264', 'h265') for qp in QPS}
+        observed = [(r['source_id'], r['codec'], r['qp']) for r in rows]
+        if (manifest.get('schema') != 'adaptive-vcm-training-v6' or
+                cfg.get('ar_training') != 'source_validated_portfolio' or cfg['ar_kl_slack'] != .1 or
+                cfg.get('ar_guard_rule') != 'anchor_relative_v2' or cfg.get('rank_top_k') != 3 or
+                tuple(cfg['qps']) != QPS or len(observed) != len(expected) or set(observed) != expected):
+            raise ValueError('cached complete TRAIN codec/QP grid or strict protocol differs')
+        for identifier in manifest['train_ids']:
+            if len({r['source_sha256'] for r in rows if r['source_id'] == identifier}) != 1:
+                raise ValueError('source pixels changed inside a complete TRAIN codec/QP grid')
+        archive = path / 'train_records.npz'
+        if hashlib.sha256(archive.read_bytes()).hexdigest() != manifest.get('train_records_sha256'):
+            raise ValueError('cached TRAIN array archive hash differs from manifest')
     x, safety, rates, ids, sizes = [], [], [], [], []
     from .ranking import measurement_targets
     for row in rows:
@@ -379,6 +404,13 @@ def load_record_directory(path: Path):
                 raise ValueError('cached marginal baseline differs from guarded controls')
             baseline.append(ratio)
         baseline = np.asarray(baseline)
+    if anchor_bank:
+        with np.load(path / 'train_records.npz') as arrays:
+            expected_arrays = dict(context=np.stack(x), safety=np.stack(safety), log_rate=np.stack(rates),
+                                   baseline_log_rate=np.asarray([r['baseline_log_rate'] for r in rows]))
+            for key, value in expected_arrays.items():
+                if key not in arrays or not np.array_equal(arrays[key], value):
+                    raise ValueError('cached TRAIN arrays disagree with measured records')
     return {"context": np.stack(x), "safety": np.stack(safety), "log_rate": np.stack(rates),
             'baseline_log_rate': baseline,
             "source_ids": ids, "action_names": names, "anchor_bytes": np.asarray(sizes),

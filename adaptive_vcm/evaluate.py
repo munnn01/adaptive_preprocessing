@@ -23,7 +23,7 @@ from .rateaware import RateAwarePreprocessor, load_preprocessor, semantic_protec
 from .profiles import ProfilePreprocessor
 
 ROOT = Path(__file__).resolve().parents[1]
-RANKING_SCHEMAS = ('adaptive-vcm-ranking-v4', 'adaptive-vcm-utility-v5')
+RANKING_SCHEMAS = ('adaptive-vcm-ranking-v4', 'adaptive-vcm-utility-v5', 'adaptive-vcm-portfolio-v6')
 
 
 def write_json(path: Path, value) -> None:
@@ -323,12 +323,15 @@ def run(args) -> dict:
         decision['proposal_budget'] = {'learned': cfg['rank_top_k'], 'static': cfg['rank_top_k'],
                                       'bank_oracle': len(learned.action_names) - 1,
                                       'oracle_scope': 'audit upper bound; unproposed actions excluded from adaptive selection'}
-        if getattr(learned, 'schema', None) == 'adaptive-vcm-utility-v5':
+        if getattr(learned, 'schema', None) in ('adaptive-vcm-utility-v5', 'adaptive-vcm-portfolio-v6'):
             decision['proposal_budget']['group_static'] = cfg['rank_top_k']
             decision['policy_fit'] = {'learned_mix': learned.learned_mix,
                                      'prior_only': learned.learned_mix == 0,
                                      'utility_target_scope': learned.utility_target_scope,
                                      'scope': 'TRAIN sourceblocked CV; fixed pixel filter bank'}
+            if getattr(learned, 'schema', None) == 'adaptive-vcm-portfolio-v6':
+                decision['policy_fit']['proposal_origin_scope'] = 'per-point prior_only in selection audit; mixed low/high recipes'
+                decision['policy_fit']['recipes'] = learned.recipes
     write_json(args.out / "summary.json", decision)
     print(json.dumps(decision, indent=2, allow_nan=False), flush=True)
     return decision

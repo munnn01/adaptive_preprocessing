@@ -20,19 +20,29 @@ def choose_rank_stream(clip, protection, codec, cfg, teachers, source_prediction
     """
     mask = protection if learned_mask is None else learned_mask
     controls = make_candidates(clip, protection, 'ar', codec.qp, cfg['ar_candidates'])
-    utility = getattr(learned, 'schema', None) == 'adaptive-vcm-utility-v5'
+    portfolio = getattr(learned, 'schema', None) == 'adaptive-vcm-portfolio-v6'
+    utility = portfolio or getattr(learned, 'schema', None) == 'adaptive-vcm-utility-v5'
+    anchor = codec.roundtrip(controls[0].clip)
+    anchor_predictions = [teacher.probabilities(anchor.decoded) for teacher in teachers]
     if utility:
-        from .stabilized_bank import build_stabilized_bank
+        from .stabilized_bank import ACTION_NAMES as STABILIZED_NAMES, build_stabilized_bank
         names = learned.action_names
-        bank = (build_task_bank(clip, mask, codec.qp) if tuple(names) == ACTION_NAMES
-                else build_stabilized_bank(clip, mask, codec.qp))
+        if tuple(names) == ACTION_NAMES:
+            bank = build_task_bank(clip, mask, codec.qp)
+        elif tuple(names) == STABILIZED_NAMES:
+            bank = build_stabilized_bank(clip, mask, codec.qp)
+        elif portfolio:
+            from .anchor_bank import ACTION_NAMES as ANCHOR_NAMES, build_anchor_bank
+            if tuple(names) != ANCHOR_NAMES:
+                raise ValueError('unregistered portfolio action bank')
+            bank = build_anchor_bank(clip, mask, codec.qp, anchor.decoded)
+        else:
+            raise ValueError('unregistered utility action bank')
     else:
         bank = build_task_bank(clip, mask, codec.qp)
         names = ACTION_NAMES
     if tuple(c.name for c in bank) != tuple(names):
         raise ValueError('task bank/action order mismatch')
-    anchor = codec.roundtrip(controls[0].clip)
-    anchor_predictions = [teacher.probabilities(anchor.decoded) for teacher in teachers]
     if utility:
         from .utility_ranking import build_utility_context
         context = build_utility_context(clip, codec.qp, codec.codec, mask,
@@ -43,6 +53,7 @@ def choose_rank_stream(clip, protection, codec, cfg, teachers, source_prediction
                                      source_predictions, anchor_predictions)
     top_k = cfg['rank_top_k']
     learned_indices = [int(i) for i in learned.rank(context, top_k=top_k)]
+    details = learned.proposal_details(context, top_k) if utility else None
     static_indices = [int(i) for i in learned.static_action_order[:top_k]]
     group_indices = ([int(i) for i in learned.group_static_action_order(context, top_k)]
                      if utility else [])
@@ -53,7 +64,7 @@ def choose_rank_stream(clip, protection, codec, cfg, teachers, source_prediction
             or (utility and (len(group_indices) != top_k or len(set(group_indices)) != top_k))):
         raise ValueError('invalid learned/static action indices')
     measured_indices = list(range(1, len(bank))) if components else learned_indices
-    prefix = 'trained_prior__' if utility and learned.learned_mix == 0 else 'learned_rank__'
+    prefix = 'trained_prior__' if utility and details['prior_only'] else 'learned_rank__'
     candidates = controls + [Candidate(prefix + bank[i].name, bank[i].clip)
                              for i in measured_indices]
     encoded, observations, audit = [], [], []
@@ -91,7 +102,9 @@ def choose_rank_stream(clip, protection, codec, cfg, teachers, source_prediction
         audit[0]['learned_order'] = learned_indices
         audit[0]['global_static_order'] = static_indices
         audit[0]['group_static_order'] = group_indices
-        audit[0]['proposal_details'] = learned.proposal_details(context, top_k)
+        audit[0]['proposal_details'] = details
+        if portfolio:
+            audit[0]['anchor_decoded_sha256'] = hashlib.sha256(anchor.decoded.tobytes()).hexdigest()
     positions = {action: len(controls) + i for i, action in enumerate(measured_indices)}
     control_subset = list(range(len(controls)))
     learned_subset = [positions[i] for i in learned_indices]
@@ -111,6 +124,8 @@ def choose_rank_stream(clip, protection, codec, cfg, teachers, source_prediction
         subsets['group_static_adaptive'] = control_subset + [positions[i] for i in group_indices]
         # Old-bank upper bound isolates added filter capacity on the same source.
         subsets['v25_bank_oracle'] = control_subset + [positions[i] for i in range(1, len(ACTION_NAMES))]
+        if portfolio and tuple(names[:len(STABILIZED_NAMES)]) == STABILIZED_NAMES:
+            subsets['v26_bank_oracle'] = control_subset + [positions[i] for i in range(1, len(STABILIZED_NAMES))]
     alternatives = {}
     for arm, subset in subsets.items():
         winner = choose(subset)
@@ -134,7 +149,7 @@ def ranking_diagnostics(rows, components, qps):
                  'adaptive_bytes': primary_bytes,
                  'selected_learned_points': sum(r['candidate'].startswith('learned_rank__') for r in adaptive.values()),
                  'selected_trained_prior_points': sum(r['candidate'].startswith('trained_prior__') for r in adaptive.values())}
-        for arm in ('controls', 'static_adaptive', 'group_static_adaptive', 'v25_bank_oracle', 'bank_oracle'):
+        for arm in ('controls', 'static_adaptive', 'group_static_adaptive', 'v25_bank_oracle', 'v26_bank_oracle', 'bank_oracle'):
             comparison = {r['id']: r for r in components if r['arm'] == arm and r['qp'] == qp}
             if set(comparison) != set(anchor):
                 continue

@@ -78,20 +78,22 @@ test -n "$ANN" && test -n "$IMAGES"
         data_arguments = '--task od --root "$IMAGES" --annotations "$ANN"'
     checkpoint = ""
     recipe = getattr(args, "recipe", "v22")
-    if recipe not in ("v22", "v23", "v24", "v25", "v26"):
+    if recipe not in ("v22", "v23", "v24", "v25", "v26", "v27"):
         raise ValueError("unsupported recipe")
     if recipe == "v24" and (args.task != "ar" or args.mode != "learned"):
         raise ValueError("V24 recipe is registered for learned AR only")
-    if recipe in ('v25', 'v26') and (args.task != 'ar' or args.mode != 'learned'):
+    if recipe in ('v25', 'v26', 'v27') and (args.task != 'ar' or args.mode != 'learned'):
         raise ValueError('ranking recipes are registered for learned AR only')
     measurements = getattr(args, 'measurements', 512)
     train_count = getattr(args, 'train_count', 512)
-    if recipe in ('v25', 'v26') and (measurements < 10 or train_count < (4 if recipe == 'v26' else 2)):
+    if recipe in ('v25', 'v26', 'v27') and (measurements < 10 or train_count < (4 if recipe in ('v26', 'v27') else 2)):
         raise ValueError('ranking collection needs at least ten codec/QP groups')
+    if recipe == 'v27' and measurements != train_count * 10:
+        raise ValueError('V27 requires a complete TRAIN codec/QP grid with train_count*10 measurements')
     config_option = f" --config configs/{recipe}_screen.json" if recipe != "v22" else ""
     trainer = {"v22": "adaptive_vcm.train", "v23": "adaptive_vcm.train_rateaware",
                "v24": "adaptive_vcm.train_profiles", 'v25': 'adaptive_vcm.train_ranking',
-               'v26': 'adaptive_vcm.train_utility'}[recipe]
+               'v26': 'adaptive_vcm.train_utility', 'v27': 'adaptive_vcm.train_portfolio'}[recipe]
     if recipe == "v24":
         # Paired guard-only control: exact V23 final checkpoint, unchanged config,
         # current corrected guard. Never train from or select a model on DEV.
@@ -100,19 +102,19 @@ test -f "$BASELINE"
 '''
         bash += f'python -m adaptive_vcm.evaluate {data_arguments} --config configs/v23_screen.json --checkpoint "$BASELINE" --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap} --ablate-learned --out "$OUT/guard_only"\n'
     if args.mode == "learned":
-        count = train_count if recipe in ('v25', 'v26') else 512
-        extras = f' --measurements {measurements}' if recipe in ('v25', 'v26') else ''
-        steps_option = '' if recipe == 'v26' else f' --steps {args.steps}'
+        count = train_count if recipe in ('v25', 'v26', 'v27') else 512
+        extras = f' --measurements {measurements}' if recipe in ('v25', 'v26', 'v27') else ''
+        steps_option = '' if recipe in ('v26', 'v27') else f' --steps {args.steps}'
         bash += f'python -m {trainer} {data_arguments}{config_option} --count {count}{steps_option}{extras} --seed {args.seed} --out "$OUT/train"\n'
         checkpoint = ' --checkpoint "$OUT/train/preprocessor_last.pth"'
-    ablation_option = " --ablate-learned" if recipe in ("v23", "v24", 'v25', 'v26') and args.mode == "learned" else ""
+    ablation_option = " --ablate-learned" if recipe in ("v23", "v24", 'v25', 'v26', 'v27') and args.mode == "learned" else ""
     bash += f'python -m adaptive_vcm.evaluate {data_arguments}{config_option} --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap}{checkpoint}{ablation_option} --out "$OUT/eval"\n'
     directory = args.directory or ROOT / "outputs/kaggle" / args.slug
     directory.mkdir(parents=True, exist_ok=True)
     # Stream the new recipe's subprocess output as it happens. %%bash buffers
     # the entire cell, which hid collection progress on the older long jobs.
     source = bash
-    if recipe == 'v26':
+    if recipe in ('v26', 'v27'):
         command = bash.removeprefix('%%bash\n')
         source = ('import subprocess\n'
                   f'command = {command!r}\n'
@@ -133,9 +135,9 @@ test -f "$BASELINE"
     (directory / "notebook.ipynb").write_text(json.dumps(notebook, indent=2), encoding="utf-8")
     (directory / "kernel-metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     (directory / "job.json").write_text(json.dumps({"commit": args.commit, "task": args.task, "mode": args.mode, "recipe": recipe,
-                                                   "steps": None if recipe == 'v26' else args.steps, "count": args.count, "bootstrap": args.bootstrap,
-                                                   "measurements": measurements if recipe in ('v25', 'v26') else None,
-                                                   "train_count": train_count if recipe in ('v25', 'v26') else None,
+                                                   "steps": None if recipe in ('v26', 'v27') else args.steps, "count": args.count, "bootstrap": args.bootstrap,
+                                                   "measurements": measurements if recipe in ('v25', 'v26', 'v27') else None,
+                                                   "train_count": train_count if recipe in ('v25', 'v26', 'v27') else None,
                                                    "seed": args.seed, "handle": metadata["id"], "private": True}, indent=2), encoding="utf-8")
     print(json.dumps({"prepared": str(directory), "handle": metadata["id"], "commit": args.commit}))
     return directory
@@ -165,7 +167,7 @@ def main():
     parser.add_argument("--slug")
     parser.add_argument("--task", choices=["ar", "od"], default="ar")
     parser.add_argument("--mode", choices=["analytic", "learned"], default="learned")
-    parser.add_argument("--recipe", choices=["v22", "v23", "v24", 'v25', 'v26'], default="v22")
+    parser.add_argument("--recipe", choices=["v22", "v23", "v24", 'v25', 'v26', 'v27'], default="v22")
     parser.add_argument("--commit")
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument('--measurements', type=int, default=512)
