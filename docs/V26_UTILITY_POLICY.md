@@ -16,6 +16,10 @@ An unsafe action, or one missing the existing1% anchor saving gate, has zero
 utility. With `baseline_log_rate` supplied, utility is the additional byte saving
 over the already guarded control stream. Legacy replay without that argument
 measures saving over the anchor and must retain that narrower attribution.
+Actual integer anchor/action bytes are mandatory in both modes; marginal
+fitting also requires the actual guarded-control bytes. Logs are validated
+against those counts but are never subtracted to form labels. Equal-byte
+actions have exactly zero utility and saved-byte counts are integral.
 
 A TRAIN codec/QP mean shrinks toward the global mean with pseudo-count4 or16.
 A standardized linear ridge residual augments that prior with mixture0,.25,.5
@@ -44,7 +48,18 @@ The reusable reader verifies the measurements manifest hash, original source
 fingerprints, source TRAIN partitions, action order, source geometry/anchor bpp,
 legacy context schema and exact bank source hash. It does not re-encode cached
 streams. `scripts.audit_utility_cv` additionally reinitializes and fits the fixed
-V25 MLP recipe inside each source-blocked TRAIN fold for comparison.
+V25 MLP recipe inside each source-blocked TRAIN fold for comparison, and
+explicitly requires its legacy 1,640-entry measurement context.
+
+For numerical repairs of V26 collection output, use:
+
+```powershell
+python -m adaptive_vcm.train_utility --root DATA_ROOT --seed 302101 --reuse-records EXISTING_V26_TRAIN_DIRECTORY --out EMPTY_OUTPUT_DIRECTORY
+```
+
+This requires the unchanged config/seed, preserves the original JSONL and
+record arrays, and records original measurement-code provenance separately
+from current fitting code. No new teacher or codec is constructed.
 
 On the existing80-source V25 pilot TRAIN cache, selected ridge1000/mix.5/prior16
 retrieves8712 bytes OOF, versus8702 bytes for global static and7254 bytes for raw

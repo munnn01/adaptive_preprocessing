@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from adaptive_vcm.ranking import RankPreprocessor, ranking_loss
+from adaptive_vcm.ranking import RankPreprocessor, ranking_loss, CONTEXT_SCHEMA, CONTEXT_DIM
 from adaptive_vcm.utility_ranking import (fit_utility_model, load_record_directory,
                                           source_folds, _retrieval, _utility)
 
@@ -19,8 +19,12 @@ def main():
     if args.out.exists():
         raise ValueError("audit output file already exists")
     bundle = load_record_directory(args.records)
+    if (bundle['manifest']['context_schema'] != CONTEXT_SCHEMA
+            or bundle['manifest']['context_dim'] != CONTEXT_DIM):
+        raise ValueError('MLP comparison requires legacy V25 measurement context')
     _, report = fit_utility_model(bundle["context"], bundle["safety"], bundle["log_rate"],
-        bundle["source_ids"], bundle["action_names"], anchor_bytes=bundle["anchor_bytes"])
+        bundle["source_ids"], bundle["action_names"], anchor_bytes=bundle["anchor_bytes"],
+        action_bytes=bundle['action_bytes'])
     records = list(map(json.loads, (args.records / "measurements.jsonl").read_text().splitlines()))
     x = torch.tensor(np.asarray([row["context"] for row in records]), dtype=torch.float32)
     safety = torch.tensor(bundle["safety"], dtype=torch.float32)
@@ -48,7 +52,8 @@ def main():
             logits, predicted_rate = model(x[valid])
             scores[valid] = model.scores(logits, predicted_rate).numpy()
         print(json.dumps({"completed_train_fold": fold}), flush=True)
-    target = _utility(bundle["safety"], bundle["log_rate"], .01)
+    target = _utility(bundle["safety"], bundle["log_rate"], .01,
+                      anchor_bytes=bundle['anchor_bytes'], action_bytes=bundle['action_bytes'])
     report["legacy_mlp_oof"] = _retrieval(scores, target, bundle["anchor_bytes"], 3)
     report["legacy_mlp_recipe"] = {"width": 64, "steps_per_fold": 1500, "batch_size": 32,
         "lr": .001, "seed": "302101 + fold", "source": "reinitialized inside each source-blocked TRAIN fold"}

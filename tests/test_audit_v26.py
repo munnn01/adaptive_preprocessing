@@ -80,14 +80,19 @@ def test_cv_recomputes_all_recipes_and_rejects_corrupted_source_assignment():
     sizes = np.arange(len(x)) * 31 + 1000
     x[:, -1] = np.log1p(8 * sizes / (16 * 128 * 128))
     safety = (rng.random((len(x), 4)) > .3).astype(np.float32)
-    rate = np.log(rng.uniform(.78, 1.08, size=safety.shape)).astype(np.float32)
-    baseline = np.log(np.full(len(x), .95))
+    actions = np.rint(rng.uniform(.78, 1.08, size=safety.shape) * sizes[:, None]).astype(np.int64)
+    controls = np.floor(sizes * .95).astype(np.int64)
+    rate = np.log(actions / sizes[:, None]).astype(np.float32)
+    baseline = np.log(controls / sizes)
     names = ('identity', 'a', 'b', 'c', 'd')
     model, fit = utility.fit_utility_model(x, safety, rate, ids, names,
-                                          anchor_bytes=sizes, baseline_log_rate=baseline)
-    result = independent_cv(x, safety, rate, baseline, ids, sizes, fit, model.checkpoint_state())
+                                          anchor_bytes=sizes, baseline_log_rate=baseline,
+                                          action_bytes=actions, control_bytes=controls)
+    result = independent_cv(x, safety, rate, baseline, ids, sizes, fit, model.checkpoint_state(),
+                             action_bytes=actions, control_bytes=controls)
     assert result['recipes_recomputed'] == 24 and result['source_leakage'] == 0
     broken = copy.deepcopy(fit)
     broken['fold_assignment'][0] = (broken['fold_assignment'][0] + 1) % 4
     with pytest.raises(AssertionError):
-        independent_cv(x, safety, rate, baseline, ids, sizes, broken, model.checkpoint_state())
+        independent_cv(x, safety, rate, baseline, ids, sizes, broken, model.checkpoint_state(),
+                       action_bytes=actions, control_bytes=controls)

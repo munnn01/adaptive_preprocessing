@@ -57,7 +57,10 @@ def fixture():
 def test_source_cv_fit_loader_and_proposal_origin_are_auditable():
     context, safety, rates, ids = fixture()
     names = ("identity", "a", "b", "c", "unsafe")
-    model, report = fit_utility_model(context, safety, rates, ids, names)
+    sizes = np.full(len(context), 10000)
+    actions = np.tile([9500, 9600, 9700, 1000], (len(context), 1))
+    model, report = fit_utility_model(context, safety, rates, ids, names,
+                                     anchor_bytes=sizes, action_bytes=actions)
     assert report["scope"].startswith("source-blocked TRAIN")
     assert report["selected_oof"]["feasible_records"] == len(context)
     assert len(report["by_codec_qp"]) == 2
@@ -76,7 +79,8 @@ def test_source_cv_fit_loader_and_proposal_origin_are_auditable():
     with pytest.raises(ValueError):
         load_utility_preprocessor(state, action_names=names)
     with pytest.raises(ValueError):
-        fit_utility_model(context, safety, rates, ["nontrain"] * len(ids), names)
+        fit_utility_model(context, safety, rates, ["nontrain"] * len(ids), names,
+                          anchor_bytes=sizes, action_bytes=actions)
 
 
 def test_nan_coefficients_and_wrong_action_bank_fail_closed():
@@ -93,10 +97,13 @@ def test_marginal_target_rewards_only_saving_beyond_actual_guarded_controls():
     safety = np.array([[1., 1., 0., 1.]])
     rate = np.log(np.array([[.95, .90, .10, .995]]))
     baseline = np.log(np.array([.94]))
-    np.testing.assert_allclose(_utility(safety, rate, .01, baseline), [[0., .04, 0., 0.]])
+    np.testing.assert_allclose(_utility(safety, rate, .01, baseline,
+        anchor_bytes=[1000], action_bytes=[[950, 900, 100, 995]], control_bytes=[940]), [[0., .04, 0., 0.]])
     context, safe, rates, ids = fixture()
     model, report = fit_utility_model(context, safe, rates, ids,
-        ("identity", "a", "b", "c", "unsafe"), baseline_log_rate=np.log(np.full(len(context), .94)))
+        ("identity", "a", "b", "c", "unsafe"), baseline_log_rate=np.log(np.full(len(context), .94)),
+        anchor_bytes=np.full(len(context), 10000), control_bytes=np.full(len(context), 9400),
+        action_bytes=np.tile([9500, 9600, 9700, 1000], (len(context), 1)))
     assert report["utility_target_scope"] == "marginal_saving_beyond_guarded_controls"
     assert model.checkpoint_state()["utility_target_scope"] == report["utility_target_scope"]
     assert report["bank_oracle"]["saved_bytes"] == 0.

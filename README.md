@@ -1,6 +1,6 @@
 # Adaptive Video Preprocessing for VCM
 
-Bộ preprocessing V22–V25 cho **Action Recognition (AR)** và **Object Detection (OD)**,
+Bộ preprocessing V22–V26 cho **Action Recognition (AR)** và **Object Detection (OD)**,
 phát triển từ bài học V1–V21 và tài liệu [IEEE TCSVT, IEEE TIP, CVPR cùng các
 bài trong LAB](docs/RESEARCH_DESIGN.md). Mục tiêu: **BD-rate < −10% so với từng
 H.264 và H.265**, theo Top-1 của AR và COCO mAP của OD.
@@ -92,13 +92,20 @@ V25 pilot DEV16 đã audit: learned được chọn18/160 điểm, gồm15 filte
 resample; tiết kiệm thêm4907 byte trên controls ghép cặp với V24. Policy vẫn
 thua TRAIN group-static trên toàn pilot và chưa đạt quality gate. Xem
 [báo cáo V25 pilot](docs/RESULTS_V25_PILOT_2026-10-05.md).
-Run DEV128 vẫn đang chạy; chưa xác nhận mục tiêu BD-rate hoặc TEST.
+Run [V25 DEV128 đã hoàn tất](docs/RESULTS_V25_FULL_2026-10-05.md): learned
+131/1.280 điểm, nhưng BD-rate held-out chỉ −4,12% H.264 / −3,00% H.265 và
+quality gate chưa đạt. Chưa xác nhận mục tiêu BD-rate hoặc TEST.
 
 V26 thử nghiệm bổ sung16 mức lọc luma/DC/exposure giữ nguyên resolution, và
 policy41D học byte tiết kiệm **thêm trên controls** bằng TRAIN CV tách source.
 Bank có33 action ngoài identity; policy vẫn chỉ đề xuất3. Xem
 [thiết kế và cách chạy V26](docs/V26_DESIGN.md). Kết quả TRAIN/synthetic không
 được dùng để xác nhận accuracy hay mục tiêu BD-rate.
+[V26 pilot đã audit](docs/RESULTS_V26_PILOT_2026-10-05.md): learned 27/160
+điểm và TRAIN thêm 3 nhóm khả thi, nhưng tiết kiệm tại QP cao chưa tăng đều;
+chỉ 7 lựa chọn là lọc thuần. Nhãn policy nay trừ byte nguyên, với 160 test
+đạt và review Superpowers đã đóng hai lỗi P2. Xem
+[tài liệu nghiên cứu nguồn gốc](docs/LITERATURE_V26.md).
 
 Token chỉ đọc từ file ngoài repo và truyền qua environment subprocess.
 Notebook private, free T4, code clone đúng full commit SHA; không chứa token.

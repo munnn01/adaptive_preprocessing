@@ -93,14 +93,15 @@ def independent_folds(ids, folds=4):
 def retrieval(scores, gains, sizes):
     order = np.argsort(-scores, axis=1, kind='stable')[:, :3]
     selected = np.take_along_axis(gains, order, axis=1).max(1)
+    saved = np.rint(selected * sizes).astype(np.int64)
     return {'mean_guarded_saving_pct': float(100 * selected.mean()),
-            'total_byte_saving_pct': float(100 * (selected * sizes).sum() / sizes.sum()),
+            'total_byte_saving_pct': float(100 * saved.sum() / sizes.sum()),
             'feasible_records': int((selected > 0).sum()), 'records': len(gains),
-            'saved_bytes': float((selected * sizes).sum()),
+            'saved_bytes': int(saved.sum()),
             'top1_counts': dict(Counter(str(int(i + 1)) for i in order[:, 0]))}
 
 
-def independent_cv(x, safety, rate, baseline, ids, sizes, fit, checkpoint):
+def independent_cv(x, safety, rate, baseline, ids, sizes, fit, checkpoint, *, action_bytes, control_bytes):
     """Recompute every source-blocked recipe from archived TRAIN labels only."""
     assert x.shape == (len(ids), 41) and x.dtype == np.float64
     group = np.rint(x[:, 1]).astype(int) * 5 + np.asarray([QPS.index(int(round(q * 51))) for q in x[:, 0]])
@@ -108,11 +109,12 @@ def independent_cv(x, safety, rate, baseline, ids, sizes, fit, checkpoint):
     assert fit['folds'] == 4 and fit['source_ids'] == ids
     assert fit['fold_assignment'] == assignment.tolist()
     assert fit['utility_target_scope'] == checkpoint['utility_target_scope'] == 'marginal_saving_beyond_guarded_controls'
-    # Replay labels are float32 log-rate measurements. The registered 2e-9
-    # tolerance covers representation at exactly log(.99), never byte selection.
-    rate = rate.astype(np.float64)
-    eligible = (safety == 1.) & (rate <= math.log(.99) + 2e-9)
-    gain = np.where(eligible, np.maximum(0., np.exp(baseline[:, None]) - np.exp(rate)), 0.)
+    assert fit['label_precision'] == 'actual_integer_bytes_v1'
+    assert np.all(action_bytes == np.rint(action_bytes)) and np.all(control_bytes == np.rint(control_bytes))
+    np.testing.assert_allclose(rate, np.log(action_bytes / sizes[:, None]), atol=2e-7, rtol=2e-7)
+    np.testing.assert_allclose(baseline, np.log(control_bytes / sizes), atol=1e-12, rtol=1e-12)
+    eligible = (safety == 1.) & (action_bytes <= sizes[:, None] * .99)
+    gain = np.where(eligible, np.maximum(0, control_bytes[:, None] - action_bytes) / sizes[:, None], 0.)
 
     def prior(xx, yy, gg, pseudo):
         global_mean = yy.mean(0)
@@ -318,13 +320,15 @@ def audit(run: Path, *, code_root: Path = ROOT, expected_commit=None, baseline_v
         context = np.asarray(record['context'], np.float64)
         assert context.shape == (41,) and np.isfinite(context).all()
         assert int(round(context[0] * 51)) == record['qp'] and int(round(context[1])) == int(record['codec'] == 'h265')
-        assert context[-1] == math.log1p(bpp)
+        assert math.isclose(context[-1], math.log1p(bpp), rel_tol=0., abs_tol=1e-12)
         sizes.append(anchor['coded_bytes'])
         source_ids.append(record['source_id'])
     fit = read_json(train / 'fit_diagnostics.json')
     check_close(fit, training['fit_diagnostics'])
     cv = independent_cv(arrays['context'], arrays['safety'], arrays['log_rate'], arrays['baseline_log_rate'],
-                        source_ids, np.asarray(sizes, np.float64), fit, checkpoint)
+                        source_ids, np.asarray(sizes, np.float64), fit, checkpoint,
+                        action_bytes=np.asarray([[a['coded_bytes'] for a in r['actions'][1:]] for r in measured]),
+                        control_bytes=np.asarray([r['controls_coded_bytes'] for r in measured]))
     training_capacity = capacity(measured, OLD_NAMES)
     declared_capacity = read_json(train / 'capacity_diagnostics.json')
     check_close(declared_capacity, training['capacity_diagnostics'])
@@ -357,7 +361,7 @@ def audit(run: Path, *, code_root: Path = ROOT, expected_commit=None, baseline_v
         assert context.shape == (41,) and np.isfinite(context).all()
         assert hashlib.sha256(context.tobytes()).hexdigest() == candidates[0]['ranking_context_sha256']
         size = candidates[0]['coded_bytes']
-        assert context[-1] == math.log1p(8 * size / (16 * 128 * 128))
+        assert math.isclose(context[-1], math.log1p(8 * size / (16 * 128 * 128)), rel_tol=0., abs_tol=1e-12)
         assert int(round(context[0] * 51)) == entry['qp'] and int(round(context[1])) == int(entry['codec'] == 'h265')
         learned = model.rank(context, top_k=3)
         static = model.static_action_order[:3]

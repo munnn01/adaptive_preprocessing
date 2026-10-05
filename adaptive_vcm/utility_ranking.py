@@ -68,27 +68,36 @@ def _groups(x):
     return np.rint(x[:, 1]).astype(int) * len(QPS) + qp_indices
 
 
-def _anchor_bytes(x):
-    # Original source geometry is recoverable from the retained source statistics.
-    frames = np.rint(x[:, 4] * 32.)
-    h, w = np.rint(2. ** (10 * x[:, 2])), np.rint(2. ** (10 * x[:, 3]))
-    return np.maximum(1., np.rint(np.expm1(x[:, -1]) * frames * h * w / 8.))
-
-
-def _utility(safety, log_rate, min_savings, baseline_log_rate=None):
+def _utility(safety, log_rate, min_savings, baseline_log_rate=None, *,
+             anchor_bytes=None, action_bytes=None, control_bytes=None):
     safety, log_rate = np.asarray(safety, np.float64), np.asarray(log_rate, np.float64)
     if safety.ndim != 2 or safety.shape != log_rate.shape or not np.isfinite(safety).all() or not np.isfinite(log_rate).all():
         raise ValueError("invalid all-action measured targets")
     if not np.isin(safety, (0., 1.)).all() or not 0 <= min_savings < 1:
         raise ValueError("invalid measured safety or byte threshold")
-    # float32 replay archives round the exact log(0.99); account for that single
-    # representation step without changing the real selector's one-percent gate.
-    limit = math.log1p(-min_savings)
-    feasible = (safety == 1.) & (log_rate <= limit + 2e-9)
-    baseline = np.zeros(len(log_rate)) if baseline_log_rate is None else np.asarray(baseline_log_rate, np.float64)
-    if baseline.shape != (len(log_rate),) or not np.isfinite(baseline).all() or np.any(baseline > 1e-9):
-        raise ValueError("baseline must be actual guarded-control log bytes/anchor bytes")
-    return np.where(feasible, np.maximum(0., np.exp(baseline[:, None]) - np.exp(log_rate)), 0.)
+    def integer_bytes(value, shape):
+        if value is None:
+            raise ValueError('utility labels require actual integer coded bytes')
+        array = np.asarray(value, np.float64)
+        if (array.shape != shape or not np.isfinite(array).all() or np.any(array <= 0)
+                or np.any(array > 2 ** 53) or np.any(array != np.rint(array))):
+            raise ValueError('invalid actual integer coded bytes')
+        return array.astype(np.int64)
+    anchors = integer_bytes(anchor_bytes, (len(log_rate),))
+    actions = integer_bytes(action_bytes, log_rate.shape)
+    controls = anchors if baseline_log_rate is None else integer_bytes(control_bytes, anchors.shape)
+    if np.any(controls > anchors):
+        raise ValueError('guarded controls cannot exceed anchor bytes')
+    if not np.allclose(log_rate, np.log(actions / anchors[:, None]), atol=2e-7, rtol=2e-7):
+        raise ValueError('log-rate labels differ from actual coded bytes')
+    if baseline_log_rate is not None:
+        baseline = np.asarray(baseline_log_rate, np.float64)
+        if (baseline.shape != anchors.shape or not np.isfinite(baseline).all()
+                or not np.allclose(baseline, np.log(controls / anchors), atol=1e-12, rtol=1e-12)):
+            raise ValueError('baseline differs from actual guarded-control bytes')
+    feasible = (safety == 1.) & (actions <= anchors[:, None] * (1 - min_savings))
+    # Subtract integers first: equal-byte actions receive exactly zero credit.
+    return np.where(feasible, np.maximum(0, controls[:, None] - actions) / anchors[:, None], 0.)
 
 
 def _prior(x, y, pseudo):
@@ -127,10 +136,11 @@ def _predict(state, x):
 def _retrieval(scores, target, anchor_bytes, top_k):
     orders = np.argsort(-scores, axis=1, kind="stable")[:, :top_k]
     retrieved = np.take_along_axis(target, orders, axis=1).max(axis=1)
+    saved = np.rint(retrieved * anchor_bytes).astype(np.int64)
     return {"mean_guarded_saving_pct": float(100 * retrieved.mean()),
-            "total_byte_saving_pct": float(100 * (retrieved * anchor_bytes).sum() / anchor_bytes.sum()),
+            "total_byte_saving_pct": float(100 * saved.sum() / anchor_bytes.sum()),
             "feasible_records": int((retrieved > 0).sum()), "records": len(target),
-            "saved_bytes": float((retrieved * anchor_bytes).sum()),
+            "saved_bytes": int(saved.sum()),
             "top1_counts": dict(Counter(str(int(i + 1)) for i in orders[:, 0]))}
 
 
@@ -216,16 +226,18 @@ class UtilityRankPreprocessor(nn.Module):
 
 
 def fit_utility_model(context, safety, log_rate, source_ids, action_names, min_savings=.01,
-                      *, folds=4, anchor_bytes=None, baseline_log_rate=None):
+                      *, folds=4, anchor_bytes=None, baseline_log_rate=None,
+                      action_bytes=None, control_bytes=None):
     """Choose one fixed recipe exclusively by source-blocked TRAIN retrieval."""
     x = _contexts(context)
-    y = _utility(safety, log_rate, min_savings, baseline_log_rate)
+    y = _utility(safety, log_rate, min_savings, baseline_log_rate,
+                 anchor_bytes=anchor_bytes, action_bytes=action_bytes, control_bytes=control_bytes)
     if len(x) != len(y) or len(source_ids) != len(x) or y.shape[1] != len(action_names) - 1:
         raise ValueError("inconsistent source/action records")
     if any(partition(str(value)) != "train" for value in source_ids):
         raise ValueError("utility fitting cannot access DEV/TEST sources")
     assignment = source_folds(source_ids, folds)
-    bytes_ = _anchor_bytes(x) if anchor_bytes is None else np.asarray(anchor_bytes, np.float64)
+    bytes_ = np.asarray(anchor_bytes, np.float64)
     if bytes_.shape != (len(x),) or not np.isfinite(bytes_).all() or np.any(bytes_ <= 0):
         raise ValueError("invalid actual anchor bytes")
     cv_results, predictions = [], []
@@ -256,6 +268,7 @@ def fit_utility_model(context, safety, log_rate, source_ids, action_names, min_s
     diagnostics = {"scope": "source-blocked TRAIN crossvalidation; no DEV/TEST measurements",
                    "context_dim": CONTEXT_DIM, "unique_sources": len(set(source_ids)), "records": len(x),
                    "utility_target_scope": model.utility_target_scope,
+                   "label_precision": "actual_integer_bytes_v1",
                    "rate_denominator": "original anchor bytes, including every stream header",
                    "folds": folds, "fold_assignment": assignment.tolist(), "source_ids": list(source_ids),
                    "selection_metric": "maximize total held-out TRAIN actual coded bytes saved with exactly3proposals",
@@ -324,11 +337,18 @@ def load_record_directory(path: Path):
         if len(row.get("source_sha256", "")) != 64:
             raise ValueError("measurement is missing original source fingerprint")
         shape = tuple(row["source_shape"])
+        if len(shape) != 4 or shape[-1] != 3 or any(type(v) is not int or v <= 0 for v in shape):
+            raise ValueError('invalid original source geometry')
         size = row["actions"][0]["coded_bytes"]
         bpp = reference_bpp(size, shape)
         if not np.isclose(bpp, row["actual_anchor_bpp"], atol=1e-12, rtol=1e-12):
             raise ValueError("measured anchor bpp differs from original-pixel denominator")
         x.append(compact_context(row['context'], bpp) if legacy else _contexts(row['context'])[0])
+        expected = [row['qp'] / 51, float(row['codec'] == 'h265'),
+                    math.log2(shape[1]) / 10, math.log2(shape[2]) / 10, shape[0] / 32]
+        if (row['codec'] not in ('h264', 'h265') or row['qp'] not in QPS
+                or not np.allclose(x[-1][:5], expected, atol=1e-7, rtol=0)):
+            raise ValueError('cached context codec/QP/geometry differs from measured source')
         if compact and not np.isclose(np.expm1(x[-1][-1]), bpp, atol=1e-12, rtol=1e-12):
             raise ValueError('compact context anchor rate differs from measured bytes')
         safe, rate, _ = measurement_targets(row["actions"], slack=manifest["config"]["ar_kl_slack"],
@@ -343,8 +363,17 @@ def load_record_directory(path: Path):
         baseline = []
         for row in rows:
             controls = row['controls']
+            anchor = row['actions'][0]
+            if (tuple(c['name'] for c in controls) != tuple(manifest['config']['ar_candidates'])
+                    or controls[0]['name'] != 'identity'
+                    or controls[0]['coded_bytes'] != anchor['coded_bytes']
+                    or controls[0]['stream_sha256'] != anchor['stream_sha256']):
+                raise ValueError('cached controls are incomplete or have a different anchor')
             winner = select([Observation(r['name'], r['coded_bytes'], tuple(r['distances']), tuple(r['decisions']))
                              for r in controls], manifest['config']['ar_kl_slack'], .01)
+            if (row['controls_selected'] != controls[winner]['name']
+                    or row['controls_coded_bytes'] != controls[winner]['coded_bytes']):
+                raise ValueError('cached guarded-control winner fields disagree')
             ratio = np.log(controls[winner]['coded_bytes'] / row['actions'][0]['coded_bytes'])
             if not np.isclose(ratio, row['baseline_log_rate'], atol=1e-12, rtol=1e-12):
                 raise ValueError('cached marginal baseline differs from guarded controls')
@@ -353,6 +382,8 @@ def load_record_directory(path: Path):
     return {"context": np.stack(x), "safety": np.stack(safety), "log_rate": np.stack(rates),
             'baseline_log_rate': baseline,
             "source_ids": ids, "action_names": names, "anchor_bytes": np.asarray(sizes),
+            "action_bytes": np.asarray([[a['coded_bytes'] for a in r['actions'][1:]] for r in rows]),
+            "control_bytes": np.asarray([r['controls_coded_bytes'] for r in rows]) if compact else None,
             "manifest": manifest, "measurements_sha256": hashlib.sha256(measured_path.read_bytes()).hexdigest()}
 
 
@@ -403,7 +434,8 @@ def main():
     bundle = load_record_directory(args.records)
     model, report = fit_utility_model(bundle["context"], bundle["safety"], bundle["log_rate"],
         bundle["source_ids"], bundle["action_names"], anchor_bytes=bundle["anchor_bytes"],
-        baseline_log_rate=bundle['baseline_log_rate'])
+        baseline_log_rate=bundle['baseline_log_rate'], action_bytes=bundle['action_bytes'],
+        control_bytes=bundle['control_bytes'])
     (args.out / "cv_diagnostics.json").write_text(json.dumps(report, indent=2, allow_nan=False), encoding="utf-8")
     provenance = {"source_measurements_sha256": bundle["measurements_sha256"],
                   "measurement_config": bundle["manifest"]["config"],

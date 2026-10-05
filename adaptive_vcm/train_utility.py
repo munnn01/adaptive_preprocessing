@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import shutil
 
 import numpy as np
 import torch
@@ -67,6 +68,8 @@ def train(args):
     if (cfg.get('ar_training') != 'source_validated_utility' or not cfg.get('ar_require_anchor_decision')
             or cfg['min_savings'] != .01 or cfg.get('rank_top_k') != 3):
         raise ValueError('V26 requires registered utility recipe, strict guard and unchanged K3/1% threshold')
+    if getattr(args, 'reuse_records', None) is not None:
+        return replay_train(args, cfg)
     if args.count < 4 or args.measurements < 2 * len(cfg['qps']):
         raise ValueError('collection needs at least four TRAIN sources and all codec/QP groups')
     if args.out.exists() and any(args.out.iterdir()):
@@ -168,6 +171,8 @@ def train(args):
     model, fit = fit_utility_model(context, safety, rate, [r['source_id'] for r in records],
                                    action_names=ACTION_NAMES, min_savings=cfg['min_savings'],
                                    baseline_log_rate=np.asarray(baseline_rows),
+                                   action_bytes=np.asarray([[a['coded_bytes'] for a in r['actions'][1:]] for r in records]),
+                                   control_bytes=np.asarray([r['controls_coded_bytes'] for r in records]),
                                    anchor_bytes=np.asarray([r['actions'][0]['coded_bytes'] for r in records]))
     write_json(args.out / 'fit_diagnostics.json', fit)
     capacity = capacity_diagnostics(records, ACTION_NAMES, cfg)
@@ -189,6 +194,42 @@ def train(args):
     return manifest
 
 
+def replay_train(args, cfg):
+    """Refit a numerical repair on immutable TRAIN measurements, without encoding."""
+    from .utility_ranking import fit_utility_model, load_record_directory
+    bundle = load_record_directory(args.reuse_records)
+    original = bundle['manifest']
+    if cfg != original['config'] or original['seed'] != args.seed:
+        raise ValueError('cached replay must retain the registered config and seed')
+    if bundle['baseline_log_rate'] is None:
+        raise ValueError('V26 marginal replay requires measured guarded controls')
+    if args.out.exists() and any(args.out.iterdir()):
+        raise ValueError('replay output must be empty')
+    args.out.mkdir(parents=True, exist_ok=True)
+    model, fit = fit_utility_model(bundle['context'], bundle['safety'], bundle['log_rate'],
+        bundle['source_ids'], bundle['action_names'], anchor_bytes=bundle['anchor_bytes'],
+        baseline_log_rate=bundle['baseline_log_rate'], action_bytes=bundle['action_bytes'],
+        control_bytes=bundle['control_bytes'])
+    for name in ('measurements.jsonl', 'train_records.npz', 'capacity_diagnostics.json'):
+        shutil.copyfile(args.reuse_records / name, args.out / name)
+    manifest = {**original, 'code': code_manifest(), 'fit_diagnostics': fit,
+                'static_action_order': model.static_action_order,
+                'replay': {'source_measurements_sha256': bundle['measurements_sha256'],
+                           'measurement_code': original['code'],
+                           'reason': 'integer-byte numerical repair; identical TRAIN streams'}}
+    write_json(args.out / 'training_manifest.json', manifest)
+    write_json(args.out / 'fit_diagnostics.json', fit)
+    checkpoint = {**model.checkpoint_state(), 'seed': args.seed,
+                  'measurements': original['measurements'], 'fit_method': 'sourceblocked_train_cv_ridge',
+                  'train_ids_sha256': original['train_ids_sha256'], 'training_config': cfg,
+                  'config_sha256': hashlib.sha256(args.config.read_bytes()).hexdigest(),
+                  'train_records_sha256': original['train_records_sha256']}
+    torch.save(checkpoint, args.out / 'preprocessor_last.pth')
+    print(json.dumps({'cached_train_refit': True, 'measurements': original['measurements'],
+                      'fit': fit}), flush=True)
+    return manifest
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--task', choices=['ar'], default='ar')
@@ -198,6 +239,7 @@ def main():
     parser.add_argument('--measurements', type=int, default=512)
     parser.add_argument('--seed', type=int, default=302101)
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--reuse-records', type=Path)
     train(parser.parse_args())
 
 

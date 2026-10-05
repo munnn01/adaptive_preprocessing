@@ -28,6 +28,16 @@ def read_lines(path):
     return [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
 
 
+def assert_ci_matches(actual, declared):
+    """Allow only numerical roundoff in interval endpoints across libm builds."""
+    assert actual.keys() == declared.keys()
+    for name in actual:
+        if name in ('lo', 'hi') and actual[name] is not None and declared[name] is not None:
+            assert np.isclose(actual[name], declared[name], atol=1e-12, rtol=0)
+        else:
+            assert actual[name] == declared[name]
+
+
 def audit(run: Path):
     train, evaluation = run / 'train', run / 'eval'
     training, manifest = read_json(train / 'training_manifest.json'), read_json(evaluation / 'manifest.json')
@@ -189,7 +199,8 @@ def audit(run: Path):
             metrics = curve_summary(curves['anchor']['bpp'], curves['anchor']['quality'],
                                     curves['adaptive']['bpp'], curves['adaptive']['quality'], ci=ci)
             declared = summary['results'][codec][name]
-            assert declared['curves'] == curves and declared['ci'] == ci
+            assert declared['curves'] == curves
+            assert_ci_matches(ci, declared['ci'])
             for key in ('bd_rate_pct', 'pchip_bd_rate_pct', 'bd_quality_pp'):
                 assert (metrics[key] is None and declared[key] is None) or np.isclose(metrics[key], declared[key], atol=1e-8)
             assert metrics['guards'] == declared['guards'] and metrics['screen_passes'] == declared['screen_passes']

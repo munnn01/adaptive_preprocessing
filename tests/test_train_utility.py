@@ -66,3 +66,16 @@ def test_train_collects_guarded_controls_and_fits_only_sourceblocked_train(tmp_p
     assert len(model.rank(arrays['context'][0])) == 3
     assert state['training_config'] == cfg
     assert not manifest.get('steps')  # closed-form fitting has no SGD-step claim
+    # Debug repairs must reuse exactly the measured TRAIN streams, without
+    # starting a new teacher/codec collection or consulting DEV.
+    def unexpected_collection(*a):
+        raise AssertionError('cached fitting must not construct an AR teacher')
+    monkeypatch.setattr(training, 'ActionAnalyzer', unexpected_collection)
+    cached = args.out
+    args.reuse_records, args.out = cached, tmp_path / 'replay'
+    replay_manifest = training.train(args)
+    assert (args.out / 'measurements.jsonl').read_bytes() == (cached / 'measurements.jsonl').read_bytes()
+    assert replay_manifest['measurements_sha256'] == manifest['measurements_sha256']
+    assert replay_manifest['fit_diagnostics']['label_precision'] == 'actual_integer_bytes_v1'
+    restored = load_preprocessor(torch.load(args.out / 'preprocessor_last.pth', weights_only=True), 'ar')
+    assert restored.rank(arrays['context'][0]) == model.rank(arrays['context'][0])

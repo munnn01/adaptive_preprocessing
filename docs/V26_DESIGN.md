@@ -52,8 +52,9 @@ bank-code, manifest, context and baseline checks.
 The initial V26 pilot is80 TRAIN sources/80 measured source-group records and
 DEV16, seed302101. Collection preserves V25's source/group random schedule,
 including the first ten codec/QP groups and increased high-QP sampling.
-This isolates capacity on the same measured cohort. Full DEV128 V25 remains
-a separate running experiment. TEST is untouched and main stays V24.
+This isolates capacity on the same measured cohort. Both the V26 pilot and
+the separate V25 DEV128 experiment are now completed and independently
+audited; see their result reports. TEST is untouched and main stays V24.
 
 ## Running
 
