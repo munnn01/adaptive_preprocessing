@@ -88,6 +88,12 @@ output đã có dữ liệu để tránh trộn bằng chứng.
 
 ## Kaggle từ pool.json
 
+V25 pilot DEV16 đã audit: learned được chọn18/160 điểm, gồm15 filter không
+resample; tiết kiệm thêm4907 byte trên controls ghép cặp với V24. Policy vẫn
+thua TRAIN group-static trên toàn pilot và chưa đạt quality gate. Xem
+[báo cáo V25 pilot](docs/RESULTS_V25_PILOT_2026-10-05.md).
+Run DEV128 vẫn đang chạy; chưa xác nhận mục tiêu BD-rate hoặc TEST.
+
 Token chỉ đọc từ file ngoài repo và truyền qua environment subprocess.
 Notebook private, free T4, code clone đúng full commit SHA; không chứa token.
 

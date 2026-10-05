@@ -10,10 +10,14 @@ confirmed. Local requested checkout: `D:/STUDY/LAB/hope`, branch `v25-local`.
 | pilot | 80 /80 | 1500 | 16 | 0 | [qktttttttttt/v25-ranking-pilot-ar-s302101](https://www.kaggle.com/code/qktttttttttt/v25-ranking-pilot-ar-s302101) |
 | full | 512 /512 | 1500 | 128 | 2000 | [baoancut/v25-ranking-ar-s302101](https://www.kaggle.com/code/baoancut/v25-ranking-ar-s302101) |
 
-Both submissions were accepted as kernel version1. Last API check on2026-10-05:
-both **RUNNING**. This verifies scheduler status, not successful completion,
-CUDA runtime, task accuracy or byte savings. Logs/output were not available at
-the first download attempt. No V25 task result is asserted here.
+Both submissions were accepted as kernel version1. On2026-10-05 the pilot
+completed on TeslaT4 with exit0; the full run remains **RUNNING** at12:18 ICT.
+The independently audited pilot has18/160 learned selections (15 filters
+without resampling), adding4907 coded bytes of savings over paired V24 controls.
+Its policy still uses4593 more bytes than a TRAIN codec/QP static top3 comparator
+across all QPs; H264 QP45/50 has no learned contribution. These are DEV16
+diagnostics, not a BD-rate target or TEST confirmation. See
+[the pilot report](RESULTS_V25_PILOT_2026-10-05.md).
 
 Seed302101, batch32, width64, all QP30/35/40/45/50 and both standard codecs,
 unchanged source16x128x128 protocol. Private notebooks request free NvidiaT4,
@@ -27,8 +31,9 @@ Payloads and submission receipts are preserved outside Git:
 - `D:/STUDY/LAB/bao_1/output/adaptive_v25_jobs/pilot`
 - `D:/STUDY/LAB/bao_1/output/adaptive_v25_jobs/full`
 
-Results will be downloaded under
-`D:/STUDY/LAB/bao_1/output/adaptive_v25_results/pilot` and `full`.
+Pilot results and independent audits are saved under
+`D:/STUDY/LAB/bao_1/output/adaptive_v25_results/pilot_audit`;
+the full run output is reserved under `adaptive_v25_results/full`.
 Use `scripts/kaggle_runner.py status/download` with the corresponding account
 and slug. After extracting the job archive, run
 `python scripts/audit_v25.py --run PATH_TO_outputs/JOB_SLUG --out AUDIT_JSON`.
