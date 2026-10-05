@@ -1,24 +1,35 @@
 # Adaptive Video Preprocessing for VCM
 
-Bộ preprocessing V22/V23/V24 cho **Action Recognition (AR)** và **Object Detection (OD)**,
+Bộ preprocessing V22–V25 cho **Action Recognition (AR)** và **Object Detection (OD)**,
 phát triển từ bài học V1–V21 và tài liệu [IEEE TCSVT, IEEE TIP, CVPR cùng các
 bài trong LAB](docs/RESEARCH_DESIGN.md). Mục tiêu: **BD-rate < −10% so với từng
 H.264 và H.265**, theo Top-1 của AR và COCO mAP của OD.
 
-**Trạng thái 2026-10-05:** V23 đã hoàn tất. AR/r2plus1d_18 đạt BD-rate
-**−4,62% / −2,59%**; OD/ResNet50 đạt **−11,87% / −7,63%** (H.264 / H.265).
-Learned được chọn **0/1.280 AR** và **100/1.000 OD**. OD/H.264 qua DEV screen;
-**mục tiêu chung chưa đạt**, và AR co về identity cuối train.
+**Trạng thái 2026-10-05:** V24 AR đã hoàn tất và được kiểm toán. Guard hết
+mâu thuẫn source/anchor, nhưng learned vẫn **0/1.280** và chọn identity trên
+mọi điểm DEV. AR/r2plus1d_18: BD-rate **−5,21% / −2,41%**; tại QP50 chỉ tiết
+kiệm **0,6325% / 0,1006%** byte (H.264 / H.265). Toàn bộ thay đổi đến từ controls.
+OD V23/ResNet50: **−11,87% / −7,63%**, learned **100/1.000**.
+**Mục tiêu chung chưa đạt.**
 
 **V24 tập trung AR:** sửa guard mâu thuẫn source/anchor, dùng cùng guard trong
 train/eval; học chọn profile preprocessing bằng nhãn từ byte codec thật trên
 TRAIN. Các profile mạnh và temporal/DC phục vụ QP40/45/50; identity vẫn hợp lệ.
-Lượt Kaggle mới gồm đối chứng chỉ sửa guard trên checkpoint V23, rồi train/eval
-policy V24 trên cùng cohort. **[Job V24 private đang RUNNING](docs/V24_KAGGLE_EXECUTION.md); chưa có kết quả task V24.** Xem [thiết kế và
-phép so sánh V24](docs/V24_AR_DESIGN.md), [kiểm chứng local](docs/V24_VALIDATION.md).
+Lượt Kaggle V24 và đối chứng chỉ sửa guard đã COMPLETE; hai nhánh có kết quả
+giống nhau. Xem [thiết kế V24](docs/V24_AR_DESIGN.md).
+
+**V25 là nhánh thử nghiệm AR:** [17 mức lọc mới](docs/V25_BANK.md),
+[học xếp hạng từ mọi phép đo TRAIN](docs/V25_POLICY.md), và
+[đối chứng policy cùng ngân sách top-3](docs/V25_DESIGN.md).
+Kết quả ảnh tổng hợp chỉ kiểm tra khả năng giảm byte và tính đúng của pipeline;
+chưa xác nhận cải thiện trên video thật hay BD-rate. Nhánh này chỉ được công
+nhận tốt hơn sau DEV và TEST độc lập.
 
 ## Bộ adaptive preprocessor
 
+- [V25 rank policy](adaptive_vcm/ranking.py) và [trainer](adaptive_vcm/train_ranking.py):
+  dự đoán độ an toàn teacher và log(byte/anchor), học minibatch từ mọi mức lọc;
+  [bank](adaptive_vcm/task_bank.py) có shrinkage chi tiết, chroma, temporal và resize kết hợp.
 - [V24 AR profile policy](adaptive_vcm/profiles.py) và [trainer](adaptive_vcm/train_profiles.py):
   học chọn profile khả thi theo byte thật, giữ identity fallback và teacher guard.
 - [V23 rate-aware policy](adaptive_vcm/rateaware.py) và [trainer measured-codec](adaptive_vcm/train_rateaware.py):

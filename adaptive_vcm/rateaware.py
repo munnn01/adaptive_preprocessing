@@ -136,6 +136,9 @@ def load_preprocessor(state, task):
     from .profiles import ProfilePreprocessor
     if state.get("task") != task or state.get("steps", 0) < 1 or not state.get("train_ids_sha256"):
         raise ValueError("checkpoint task/training provenance mismatch")
+    if state.get('schema') == 'adaptive-vcm-ranking-v4':
+        from .ranking import load_rank_preprocessor
+        return load_rank_preprocessor(state, task)
     if state.get("schema") == "adaptive-vcm-blend-v1":
         model = AdaptiveBlendPreprocessor(state["width"])
     elif state.get("schema") == RateAwarePreprocessor.schema:

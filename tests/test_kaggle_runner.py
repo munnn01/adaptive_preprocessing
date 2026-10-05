@@ -61,6 +61,18 @@ def test_v24_payload_has_pinned_guard_control_and_profile_training(tmp_path):
     assert cell.index('$OUT/guard_only') < cell.index('adaptive_vcm.train_profiles')
 
 
+def test_v25_payload_separates_collection_and_replay_budget(tmp_path):
+    args = argparse.Namespace(commit='d' * 40, slug='v25-test-ar', account='example', recipe='v25',
+                              count=16, steps=1500, measurements=80, train_count=80, bootstrap=0,
+                              task='ar', mode='learned', seed=302001, directory=tmp_path)
+    runner.prepare(args)
+    cell = ''.join(json.loads((tmp_path / 'notebook.ipynb').read_text())['cells'][0]['source'])
+    assert 'adaptive_vcm.train_ranking' in cell and 'configs/v25_screen.json' in cell
+    assert '--count 80 --steps 1500 --measurements 80' in cell
+    assert '--count 16 --split dev' in cell and '--ablate-learned' in cell
+    assert '--split test' not in cell
+
+
 def test_kaggle_output_uses_utf8_and_redacts_secret(tmp_path, monkeypatch, capsys):
     pool = tmp_path / "pool.json"
     pool.write_text(json.dumps({"example": "PRIVATE_TEST_VALUE"}))

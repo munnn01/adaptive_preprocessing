@@ -44,6 +44,12 @@ def code_manifest() -> dict:
 def choose_stream(clip, protection, task, codec, cfg, teachers, source_predictions, learned=None,
                   *, learned_mask=None, components=False):
     """Run encoder-only selection. There is no ground-truth or evaluator input."""
+    if getattr(learned, 'schema', None) == 'adaptive-vcm-ranking-v4':
+        if task != 'ar':
+            raise ValueError('ranking recipe is registered for AR only')
+        from .rank_selection import choose_rank_stream
+        return choose_rank_stream(clip, protection, codec, cfg, teachers, source_predictions,
+                                  learned, learned_mask=learned_mask, components=components)
     candidates = make_candidates(clip, protection, task, codec.qp, cfg[f"{task}_candidates"])
     selected_profile = None
     if task == "od" and not np.any(source_predictions[0]["scores"] >= cfg["od_score_threshold"]):
@@ -194,7 +200,7 @@ def run(args) -> dict:
     learned = None
     if args.checkpoint:
         state = torch.load(args.checkpoint, map_location=device, weights_only=True)
-        if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema) and state.get("training_config") != cfg:
+        if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema, 'adaptive-vcm-ranking-v4') and state.get("training_config") != cfg:
             raise ValueError("checkpoint/evaluation configuration mismatch")
         learned = load_preprocessor(state, args.task).to(device)
         learned.eval()
@@ -214,6 +220,12 @@ def run(args) -> dict:
                 "ar_guard_rule": "anchor_relative_v2" if args.task == "ar" else None,
                 "component_scope": "learned_raw is ungated; learned_guarded uses identity fallback; component curves have no bootstrap CI"}
     write_json(args.out / "manifest.json", manifest)
+    if getattr(learned, 'schema', None) == 'adaptive-vcm-ranking-v4':
+        manifest['component_scope'] = ('controls and static_adaptive use identical fixed controls; '
+                                      'static_adaptive adds TRAIN static topK, adaptive adds learned topK; '
+                                      'bank_oracle is an audit-only upper bound; learned_raw is ungated')
+        manifest['proposal_budget'] = cfg['rank_top_k']
+        write_json(args.out / 'manifest.json', manifest)
     all_rows, geometry = {codec: [] for codec in args.codecs}, {}
     component_rows = {codec: [] for codec in args.codecs}
     for position, item in enumerate(plan):
@@ -226,7 +238,8 @@ def run(args) -> dict:
             source_predictions = [teacher.probabilities(clip) for teacher in teachers]
             semantic = np.maximum.reduce([normalize_map(teacher.saliency(clip)) for teacher in teachers])
             protection = action_protection(clip, semantic)
-            learned_mask = semantic_protection(semantic) if isinstance(learned, RateAwarePreprocessor) else protection
+            learned_mask = semantic_protection(semantic) if (isinstance(learned, RateAwarePreprocessor)
+                           or getattr(learned, 'schema', None) == 'adaptive-vcm-ranking-v4') else protection
         else:
             source_predictions = [teachers[0].predict(clip)]
             source = source_predictions[0]
@@ -289,7 +302,8 @@ def run(args) -> dict:
     if ablate:
         for codec, rows in all_rows.items():
             component_results[codec] = {}
-            for arm in ("controls", "learned_guarded", "learned_raw"):
+            arms = sorted({r['arm'] for r in component_rows[codec]})
+            for arm in arms:
                 paired = [r for r in rows if r["arm"] == "anchor"]
                 paired += [{**r, "arm": "adaptive"} for r in component_rows[codec] if r["arm"] == arm]
                 component_results[codec][arm] = (_ar_curves(paired, list(evaluators), cfg["qps"], 0, cfg["seed"]) if args.task == "ar" else
@@ -301,6 +315,12 @@ def run(args) -> dict:
                 "screen_passes": set(args.codecs) == {"h264", "h265"} and all(r["screen_passes"] for models in results.values() for r in models.values()),
                 "target_confirmed": False, "scope": cfg["scope"], "component_results": component_results,
                 "high_qp_diagnostics": high_qp_diagnostics(all_rows, component_rows, cfg, args.task, results, component_results)}
+    if getattr(learned, 'schema', None) == 'adaptive-vcm-ranking-v4':
+        from .rank_selection import ranking_diagnostics
+        decision['policy_contribution'] = {c: ranking_diagnostics(rows, component_rows[c], cfg['qps'])
+                                           for c, rows in all_rows.items()}
+        decision['proposal_budget'] = {'learned': cfg['rank_top_k'], 'static': cfg['rank_top_k'],
+                                      'bank_oracle': 17, 'oracle_scope': 'audit upper bound; unproposed actions excluded from adaptive selection'}
     write_json(args.out / "summary.json", decision)
     print(json.dumps(decision, indent=2, allow_nan=False), flush=True)
     return decision
@@ -316,7 +336,8 @@ def high_qp_diagnostics(all_rows, components, cfg, task, results, component_resu
                 continue
             anchor = {r["id"]: r for r in rows if r["arm"] == "anchor" and r["qp"] == qp}
             entries = {}
-            for arm in ("adaptive", "controls", "learned_guarded", "learned_raw"):
+            arms = ['adaptive'] + sorted({r['arm'] for r in components[codec]})
+            for arm in arms:
                 trial = [r for r in [*rows, *components[codec]] if r["arm"] == arm and r["qp"] == qp]
                 if not trial:
                     continue

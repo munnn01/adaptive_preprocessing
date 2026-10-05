@@ -78,13 +78,19 @@ test -n "$ANN" && test -n "$IMAGES"
         data_arguments = '--task od --root "$IMAGES" --annotations "$ANN"'
     checkpoint = ""
     recipe = getattr(args, "recipe", "v22")
-    if recipe not in ("v22", "v23", "v24"):
+    if recipe not in ("v22", "v23", "v24", "v25"):
         raise ValueError("unsupported recipe")
     if recipe == "v24" and (args.task != "ar" or args.mode != "learned"):
         raise ValueError("V24 recipe is registered for learned AR only")
+    if recipe == 'v25' and (args.task != 'ar' or args.mode != 'learned'):
+        raise ValueError('V25 recipe is registered for learned AR only')
+    measurements = getattr(args, 'measurements', 512)
+    train_count = getattr(args, 'train_count', 512)
+    if recipe == 'v25' and (measurements < 10 or train_count < 2):
+        raise ValueError('ranking collection needs at least ten codec/QP groups')
     config_option = f" --config configs/{recipe}_screen.json" if recipe != "v22" else ""
     trainer = {"v22": "adaptive_vcm.train", "v23": "adaptive_vcm.train_rateaware",
-               "v24": "adaptive_vcm.train_profiles"}[recipe]
+               "v24": "adaptive_vcm.train_profiles", 'v25': 'adaptive_vcm.train_ranking'}[recipe]
     if recipe == "v24":
         # Paired guard-only control: exact V23 final checkpoint, unchanged config,
         # current corrected guard. Never train from or select a model on DEV.
@@ -93,9 +99,11 @@ test -f "$BASELINE"
 '''
         bash += f'python -m adaptive_vcm.evaluate {data_arguments} --config configs/v23_screen.json --checkpoint "$BASELINE" --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap} --ablate-learned --out "$OUT/guard_only"\n'
     if args.mode == "learned":
-        bash += f'python -m {trainer} {data_arguments}{config_option} --count 512 --steps {args.steps} --seed {args.seed} --out "$OUT/train"\n'
+        count = train_count if recipe == 'v25' else 512
+        extras = f' --measurements {measurements}' if recipe == 'v25' else ''
+        bash += f'python -m {trainer} {data_arguments}{config_option} --count {count} --steps {args.steps}{extras} --seed {args.seed} --out "$OUT/train"\n'
         checkpoint = ' --checkpoint "$OUT/train/preprocessor_last.pth"'
-    ablation_option = " --ablate-learned" if recipe in ("v23", "v24") and args.mode == "learned" else ""
+    ablation_option = " --ablate-learned" if recipe in ("v23", "v24", 'v25') and args.mode == "learned" else ""
     bash += f'python -m adaptive_vcm.evaluate {data_arguments}{config_option} --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap}{checkpoint}{ablation_option} --out "$OUT/eval"\n'
     directory = args.directory or ROOT / "outputs/kaggle" / args.slug
     directory.mkdir(parents=True, exist_ok=True)
@@ -112,6 +120,8 @@ test -f "$BASELINE"
     (directory / "kernel-metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     (directory / "job.json").write_text(json.dumps({"commit": args.commit, "task": args.task, "mode": args.mode, "recipe": recipe,
                                                    "steps": args.steps, "count": args.count, "bootstrap": args.bootstrap,
+                                                   "measurements": measurements if recipe == 'v25' else None,
+                                                   "train_count": train_count if recipe == 'v25' else None,
                                                    "seed": args.seed, "handle": metadata["id"], "private": True}, indent=2), encoding="utf-8")
     print(json.dumps({"prepared": str(directory), "handle": metadata["id"], "commit": args.commit}))
     return directory
@@ -141,9 +151,11 @@ def main():
     parser.add_argument("--slug")
     parser.add_argument("--task", choices=["ar", "od"], default="ar")
     parser.add_argument("--mode", choices=["analytic", "learned"], default="learned")
-    parser.add_argument("--recipe", choices=["v22", "v23", "v24"], default="v22")
+    parser.add_argument("--recipe", choices=["v22", "v23", "v24", 'v25'], default="v22")
     parser.add_argument("--commit")
     parser.add_argument("--steps", type=int, default=1000)
+    parser.add_argument('--measurements', type=int, default=512)
+    parser.add_argument('--train-count', type=int, default=512)
     parser.add_argument("--count", type=int, default=128)
     parser.add_argument("--bootstrap", type=int, default=200)
     parser.add_argument("--seed", type=int, default=302001)
