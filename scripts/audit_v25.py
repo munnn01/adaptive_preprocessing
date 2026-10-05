@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from adaptive_vcm.data import fingerprint, partition
 from adaptive_vcm.metrics import curve_summary, paired_ar_bootstrap
-from adaptive_vcm.ranking import load_rank_preprocessor, measurement_targets
+from adaptive_vcm.ranking import load_rank_preprocessor, measurement_targets, static_action_order
 from adaptive_vcm.selection import Observation, select
 from adaptive_vcm.task_bank import ACTION_NAMES
 
@@ -72,6 +72,10 @@ def audit(run: Path):
         slot['oracle_saving_pct_sum'] += record['oracle_saving_pct']
     for slot in training_stats.values():
         slot['oracle_mean_saving_pct'] = slot.pop('oracle_saving_pct_sum') / slot['records']
+    group_orders = {}
+    for group in training_stats:
+        indices = [i for i, r in enumerate(measured) if f"{r['codec']}/{r['qp']}" == group]
+        group_orders[group] = static_action_order(arrays['safety'][indices], arrays['log_rate'][indices], .01)[:3]
     fit_logs = read_lines(train / 'train.jsonl')
     assert len(fit_logs) == state['steps'] and fit_logs[-1]['step'] == state['steps']
     assert any(row['gradient_norm'] > 0 for row in fit_logs)
@@ -85,6 +89,7 @@ def audit(run: Path):
     assert len(audits) == len(manifest['ids']) * len(manifest['codecs']) * len(cfg['qps'])
     assert len({(a['id'], a['codec'], a['qp']) for a in audits}) == len(audits)
     arm_count = Counter()
+    group_static_rows = []
     for entry in audits:
         candidates = entry['candidates']
         assert candidates[0]['name'] == 'identity'
@@ -121,6 +126,16 @@ def audit(run: Path):
         raw = indexed[(entry['id'], entry['codec'], entry['qp'], 'learned_raw')]
         assert any(raw['stream_sha256'] == candidates[i]['stream_sha256'] and raw['coded_bytes'] == candidates[i]['coded_bytes'] for i in learned)
         assert indexed[(entry['id'], entry['codec'], entry['qp'], 'adaptive')]['candidate'] == entry['selected']
+        group_order = group_orders[f"{entry['codec']}/{entry['qp']}"]
+        group_pool = controls + [i for i, c in enumerate(candidates) if c['action_index'] in group_order]
+        group_winner = candidates[group_pool[select([observations[i] for i in group_pool], .1, .01)]]
+        # The original run did not score all bank actions with the evaluator.
+        # Recover quality only when this exact stream was scored in an arm.
+        same_stream = next((r for r in records if r['id'] == entry['id'] and r['codec'] == entry['codec']
+                            and r['qp'] == entry['qp'] and r['stream_sha256'] == group_winner['stream_sha256']), None)
+        group_static_rows.append({'id': entry['id'], 'codec': entry['codec'], 'qp': entry['qp'],
+                                  'coded_bytes': group_winner['coded_bytes'], 'candidate': group_winner['name'],
+                                  'correct': same_stream['correct'] if same_stream else None})
     dev_hashes = {r['source_sha256'] for r in records}
     assert not dev_hashes & {r['source_sha256'] for r in measured}
     table = {}
@@ -142,6 +157,19 @@ def audit(run: Path):
                 'selected_learned_points': sum(r['candidate'].startswith('learned_rank__') for r in subsets['adaptive']),
                 'top1_gap_pp': {name: 100 * np.mean([r['correct'][name] - anchor[r['id']]['correct'][name] for r in subsets['adaptive']])
                                 for name in cfg['ar_evaluators']}}
+            group_rows = [r for r in group_static_rows if r['codec'] == codec and r['qp'] == qp]
+            group_total = sum(r['coded_bytes'] for r in group_rows)
+            table[codec][str(qp)]['group_static_rate_only'] = {
+                'train_top3': [ACTION_NAMES[i] for i in group_orders[f'{codec}/{qp}']],
+                'coded_bytes': group_total,
+                'saving_pct': 100 * (1 - group_total / totals['anchor']),
+                'policy_incremental_pct_of_anchor': 100 * (group_total - totals['adaptive']) / totals['anchor'],
+                'quality_scored_points': sum(r['correct'] is not None for r in group_rows),
+                'quality_unscored_points': sum(r['correct'] is None for r in group_rows),
+                'scope': 'TRAIN codec/QP table, same top3 proposal budget and teacher guard; primary evaluator quality incomplete'}
+            capacity = totals['controls'] - totals['bank_oracle']
+            table[codec][str(qp)]['incremental_bank_capacity_capture_fraction'] = (
+                (totals['controls'] - totals['adaptive']) / capacity if capacity else None)
             if qp >= 40:
                 declared = summary['high_qp_diagnostics'][codec][str(qp)]['adaptive']
                 assert np.isclose(declared['rate_change_pct'], -table[codec][str(qp)]['saving_pct']['adaptive'])
@@ -166,7 +194,7 @@ def audit(run: Path):
                 assert (metrics[key] is None and declared[key] is None) or np.isclose(metrics[key], declared[key], atol=1e-8)
             assert metrics['guards'] == declared['guards'] and metrics['screen_passes'] == declared['screen_passes']
             recomputed[codec][name] = metrics
-    return {'scope': 'Completed source-separated development evidence; no independent TEST confirmation',
+    return {'scope': f"Completed source-separated {manifest['split']} evidence; audit does not promote the candidate",
             'commit': manifest['code']['commit'], 'split': manifest['split'], 'count': manifest['count'],
             'operating_points': len(audits), 'selection_checks': dict(arm_count),
             'train_codec_qp': training_stats, 'measured_train_sources': len({r['source_id'] for r in measured}),

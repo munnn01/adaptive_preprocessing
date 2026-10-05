@@ -57,6 +57,15 @@ the equal-budget static arm, operating-point counts, wins and losses. Oracle
 results do not count as learned results. An ablation run includes full-bank
 measurement cost; production adaptive mode encodes only controls and proposals.
 
+Before viewing pilot results, a stronger rate-only audit comparator was also
+registered: derive static top3 separately for each codec/QP from TRAIN mean
+guarded saving. Select from that pool using the already measured bank audit.
+This separates content-dependent ranking from merely learning codec/QP priors.
+Its primary evaluator quality is unknown whenever its chosen stream was not
+scored in an original arm; do not substitute its rate-only result for an AR curve.
+The audit also reports what fraction of the bank's incremental byte opportunity
+over controls the learned proposals capture.
+
 ## Evidence sequence
 
 1. Local tests and synthetic actual-codec probe establish accounting, safety
