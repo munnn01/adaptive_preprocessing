@@ -38,7 +38,7 @@ def test_motion_checkpoint_loads_actual_neural_model_and_rejects_cross_task(task
         load_preprocessor(state(task), 'od' if task == 'ar' else 'ar')
 
 
-@pytest.mark.parametrize('fault', ['incomplete','duplicate','nontrain','hash','static','nan','steps','source_hash'])
+@pytest.mark.parametrize('fault', ['incomplete','duplicate','nontrain','hash','static','nan','steps','source_hash','overflow'])
 def test_motion_checkpoint_fails_closed_on_unverifiable_training(fault):
     value = state()
     if fault == 'incomplete': value['measurements'] -= 1
@@ -47,6 +47,7 @@ def test_motion_checkpoint_fails_closed_on_unverifiable_training(fault):
     elif fault == 'hash': value['measurements_sha256'] = 'unverified'
     elif fault == 'static': value['static_orders']['h264/50'] = ['not-registered'] * 3
     elif fault == 'nan': next(iter(value['model'].values())).fill_(float('nan'))
+    elif fault=='overflow': value['model']['head.bias']=torch.full(value['model']['head.bias'].shape,1e100,dtype=torch.float64)
     elif fault=='source_hash': value.pop('train_source_sha256')
     else: value['steps'] -= 1
     with pytest.raises(ValueError): load_preprocessor(value, 'ar')
@@ -104,6 +105,19 @@ def test_unknown_od_foreground_retains_identity_without_guard_nan():
     assert all(s.data == bundle[0].data for s,n in bundle[4].values())
 
 
+def test_neural_candidates_reject_arithmetic_overflow_before_pixel_conversion():
+    from adaptive_vcm.motion_selection import neural_candidates
+    from adaptive_vcm.motion_support import build_motion_support
+    value=state()
+    value['model']['trunk.0.weight'].fill_(torch.finfo(torch.float32).max)
+    assert all(torch.isfinite(v).all() for v in value['model'].values())
+    model=load_preprocessor(value,'ar')
+    source=np.full((2,16,24,3),200,np.uint8)
+    support=build_motion_support(source,np.zeros((16,24),np.float32),'ar')
+    with pytest.raises(ValueError,match='nonfinite.*proposal'):
+        neural_candidates(source,support,ProbeCodec(),model)
+
+
 @pytest.mark.codec
 @pytest.mark.parametrize('task',['ar','od'])
 def test_motion_selection_retains_guard_and_paired_real_codec_geometry(task):
@@ -147,3 +161,22 @@ def test_evaluation_rejects_train_dev_pixel_overlap_before_selection(tmp_path,mo
                          save_streams=False,out=tmp_path/'eval')
     with pytest.raises(ValueError,match='overlap'):
         evaluation.run(args)
+
+
+@pytest.mark.parametrize('checkpoint_kind',['absent','legacy'])
+def test_v28_evaluation_requires_trained_motion_checkpoint_before_data_or_teachers(tmp_path,monkeypatch,checkpoint_kind):
+    import adaptive_vcm.evaluate as evaluation
+    config=tmp_path/'config.json';config.write_text(json.dumps(cfg()))
+    checkpoint=None
+    if checkpoint_kind=='legacy':
+        checkpoint=tmp_path/'legacy.pth'
+        torch.save({'schema':'adaptive-vcm-blend-v1'},checkpoint)
+    def forbidden_plan(*args):
+        raise RuntimeError('data planning began for an untrained V28 experiment')
+    monkeypatch.setattr(evaluation,'ar_plan',forbidden_plan)
+    args=SimpleNamespace(config=config,task='ar',root=tmp_path,annotations=None,count=2,split='dev',
+                         codecs=['h264','h265'],bootstrap=0,checkpoint=checkpoint,ablate_learned=False,
+                         save_streams=False,out=tmp_path/'out')
+    with pytest.raises(ValueError,match='V28.*checkpoint'):
+        evaluation.run(args)
+    assert not args.out.exists()

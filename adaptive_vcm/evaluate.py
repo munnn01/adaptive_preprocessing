@@ -183,6 +183,16 @@ def run(args) -> dict:
     validate_config(cfg)
     if args.split not in ("dev", "test") or args.count < 1 or args.bootstrap is not None and args.bootstrap < 0:
         raise ValueError("invalid evaluation plan")
+    early_state, early_model = None, None
+    if any(cfg.get(f'{task}_mode') == 'motion_spatial' for task in ('ar', 'od')):
+        if not args.checkpoint:
+            raise ValueError('V28 requires a trained motion checkpoint')
+        early_state = torch.load(args.checkpoint, map_location='cpu', weights_only=True)
+        if not isinstance(early_state, dict) or early_state.get('schema') != 'adaptive-vcm-motion-v7':
+            raise ValueError('V28 requires a motion-v7 checkpoint')
+        if early_state.get('training_config') != cfg:
+            raise ValueError('V28 checkpoint/evaluation configuration mismatch')
+        early_model = load_preprocessor(early_state, args.task)
     draws = cfg["bootstrap_draws"] if args.bootstrap is None else args.bootstrap
     if args.out.exists() and any(args.out.iterdir()):
         raise ValueError("output must be empty; refusing to mix experiment evidence")
@@ -204,10 +214,10 @@ def run(args) -> dict:
         evaluators = {cfg["od_evaluator"]: DetectionAnalyzer(cfg["od_evaluator"], device)}
     learned = None
     if args.checkpoint:
-        state = torch.load(args.checkpoint, map_location=device, weights_only=True)
+        state = early_state if early_state is not None else torch.load(args.checkpoint, map_location=device, weights_only=True)
         if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema, 'adaptive-vcm-motion-v7', *RANKING_SCHEMAS) and state.get("training_config") != cfg:
             raise ValueError("checkpoint/evaluation configuration mismatch")
-        learned = load_preprocessor(state, args.task).to(device)
+        learned = (early_model if early_model is not None else load_preprocessor(state, args.task)).to(device)
         learned.eval()
     ablate = getattr(args, "ablate_learned", False)
     if ablate and learned is None:

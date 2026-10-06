@@ -77,6 +77,8 @@ def load_motion_preprocessor(state, task):
         model.load_state_dict(weights,strict=True)
     except (RuntimeError,TypeError) as error:
         raise ValueError('incompatible motion model state') from error
+    if any(not torch.isfinite(value).all() for value in model.state_dict().values()):
+        raise ValueError('nonfinite motion model after dtype conversion')
     model.static_orders={group:list(names) for group,names in orders.items()}
     model.training_measurements_sha256=state['measurements_sha256']
     model.train_source_sha256=dict(source_hashes)
@@ -102,6 +104,8 @@ def neural_candidates(clip,support,codec,model):
         for name,scale in PROPOSALS:
             output=model(source,source.new_tensor([codec.qp]),source.new_tensor([int(codec.codec=='h265')]),
                          protection,motion=motion,cuts=cuts,strength_scale=scale)
+            if not torch.isfinite(output).all():
+                raise ValueError(f'nonfinite neural proposal: {name}')
             pixels=output[0].permute(1,2,3,0).mul(255).round().clamp(0,255).byte().cpu().numpy()
             candidates.append(Candidate(name,pixels))
     return candidates

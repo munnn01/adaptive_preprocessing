@@ -1,9 +1,17 @@
 # Adaptive Video Preprocessing for VCM
 
-Bộ preprocessing V22–V26 cho **Action Recognition (AR)** và **Object Detection (OD)**,
+Bộ preprocessing V22–V28 cho **Action Recognition (AR)** và **Object Detection (OD)**,
 phát triển từ bài học V1–V21 và tài liệu [IEEE TCSVT, IEEE TIP, CVPR cùng các
 bài trong LAB](docs/RESEARCH_DESIGN.md). Mục tiêu: **BD-rate < −10% so với từng
 H.264 và H.265**, theo Top-1 của AR và COCO mAP của OD.
+
+**V28, 2026-10-06:** learned preprocessor dự đoán mức lọc và hỗn hợp bốn expert
+theo từng pixel, dùng bảo vệ semantic/chuyển động và nền ổn định theo đoạn video.
+AR/OD có checkpoint riêng, giữ H.264/H.265 và tọa độ ảnh gốc. Train đủ lưới
+source × codec × QP bằng byte thật; đánh giá ba đề xuất neural và đo phần tiết
+kiệm thêm so với controls. V27 vẫn là thí nghiệm riêng. **306 kiểm thử đã qua;
+chưa có kết quả V28 xác nhận mục tiêu BD-rate.** Xem [protocol V28](docs/V28_PROTOCOL.md),
+[kiểm chứng](docs/V28_VERIFICATION.md) và [đọc MoCrop/tài liệu AR](docs/LITERATURE_V28.md).
 
 **Trạng thái 2026-10-05:** V24 AR đã hoàn tất và được kiểm toán. Guard hết
 mâu thuẫn source/anchor, nhưng learned vẫn **0/1.280** và chọn identity trên
@@ -27,6 +35,10 @@ nhận tốt hơn sau DEV và TEST độc lập.
 
 ## Bộ adaptive preprocessor
 
+- [V28 spatial learned preprocessor](adaptive_vcm/motion_learned.py),
+  [motion support](adaptive_vcm/motion_support.py) và [trainer](adaptive_vcm/train_motion.py):
+  học map liên tục từ target TRAIN khả thi qua codec thật; QP>=40 có trọng số2.
+  [Selection](adaptive_vcm/motion_selection.py) giữ guard nghiêm ngặt và tách static/oracle khỏi primary.
 - [V25 rank policy](adaptive_vcm/ranking.py) và [trainer](adaptive_vcm/train_ranking.py):
   dự đoán độ an toàn teacher và log(byte/anchor), học minibatch từ mọi mức lọc;
   [bank](adaptive_vcm/task_bank.py) có shrinkage chi tiết, chroma, temporal và resize kết hợp.
