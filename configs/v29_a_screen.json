@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "experiment": "v29-a",
+  "seed": 20261006,
+  "qps": [
+    30,
+    35,
+    40,
+    45,
+    50
+  ],
+  "preset": "medium",
+  "fps": 25,
+  "frames": 16,
+  "temporal_stride": 2,
+  "ar_size": 128,
+  "od_size": 320,
+  "ar_teachers": [
+    "r3d_18",
+    "mc3_18"
+  ],
+  "ar_evaluators": [
+    "r2plus1d_18",
+    "r3d_18"
+  ],
+  "od_teacher": "mobilenet",
+  "od_evaluator": "resnet50",
+  "ar_kl_slack": 0.1,
+  "ar_confidence": 0.6,
+  "od_distance_slack": 0.03,
+  "od_score_threshold": 0.25,
+  "min_savings": 0.01,
+  "bootstrap_draws": 2000,
+  "ar_candidates": [
+    "identity",
+    "area112",
+    "area96",
+    "area112_up",
+    "blur20",
+    "blur40",
+    "protected_mild",
+    "protected_strong",
+    "protected_temporal"
+  ],
+  "od_candidates": [
+    "identity",
+    "background2",
+    "background4",
+    "background8",
+    "background12"
+  ],
+  "target_bd_rate_pct": -10,
+  "target_rule": "Strict BD-rate < -10% against each codec separately, for every primary analyzer; retain task quality and quantify paired uncertainty.",
+  "scope": "Exploratory DEV screen: direct measured profile distillation; B task-specific background treatment; C disjoint TRAIN teacher calibration. Standard RGB codecs and independent Top1/mAP evaluation; no held-out confirmation.",
+  "ar_require_anchor_decision": true,
+  "ar_guard_rule": "anchor_relative_v2",
+  "ar_mode": "motion_spatial",
+  "od_mode": "motion_spatial",
+  "motion_static_k": 3,
+  "motion_proposal_scales": [
+    0.5,
+    1.0,
+    1.5
+  ],
+  "v29_variant": "a"
+}

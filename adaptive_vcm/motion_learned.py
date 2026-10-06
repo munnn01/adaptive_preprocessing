@@ -1,4 +1,4 @@
-"""V28 spatial neural blend and twelve preregistered full-geometry profiles.
+"""V28/V29 spatial neural blend and twelve full-geometry profiles.
 
 All four experts act in place. Segment DC uses editable source pixels, with no
 cross-cut pooling. The learned alpha is causal; the encoder may inspect the
@@ -40,7 +40,8 @@ def validate_support(clip: np.ndarray, support: dict, task: str):
     return *arrays, cuts
 
 
-def _experts(video: torch.Tensor, protection: torch.Tensor, cuts: torch.Tensor, task: str):
+def _experts(video: torch.Tensor, protection: torch.Tensor, cuts: torch.Tensor, task: str,
+             motion: torch.Tensor | None = None, variant: str | None = None):
     b, c, t, h, w = video.shape
     frames = video.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
     mild_sigma, strong_sigma = (.8, 2.5) if task == "ar" else (2., 8.)
@@ -54,9 +55,23 @@ def _experts(video: torch.Tensor, protection: torch.Tensor, cuts: torch.Tensor, 
         dc_segments = []
         for start, end in zip(starts[:-1], starts[1:]):
             editable = 1 - protection[batch, :, start:end]
+            segment = video[batch, :, start:end]
+            if variant == "b" and task == "ar":
+                stationary = (1 - motion[batch, :, start:end]).square()
+                editable = editable * stationary
             denominator = editable.sum().clamp_min(1e-8)
-            average = (video[batch, :, start:end] * editable).sum((1, 2, 3)) / denominator
-            dc_segments.append(average[:, None, None, None].expand(c, end - start, h, w))
+            average = (segment * editable).sum((1, 2, 3)) / denominator
+            constant = average[:, None, None, None].expand(c, end - start, h, w)
+            if variant == "b" and task == "ar":
+                constant = segment + stationary * (constant - segment)
+            elif variant == "b" and task == "od":
+                # Preserve half the local luma variation; background chroma is
+                # shared from editable RGB, never from protected foreground.
+                coefficients = video.new_tensor([.299, .587, .114])
+                luma = (segment * coefficients[:, None, None, None]).sum(0, keepdim=True)
+                mean_luma = (average * coefficients).sum()
+                constant = .5 * luma + .5 * mean_luma + (average - mean_luma)[:, None, None, None]
+            dc_segments.append(constant)
         dc_batches.append(torch.cat(dc_segments, 1))
     dc = torch.stack(dc_batches).permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
     return torch.stack([mild, strong, block, dc], 1)
@@ -66,11 +81,15 @@ class MotionAwarePreprocessor(nn.Module):
     schema = "adaptive-vcm-motion-v7"
     candidate_name = "learned_motion"
 
-    def __init__(self, width: int = 12, task: str = "ar"):
+    def __init__(self, width: int = 12, task: str = "ar", variant: str | None = None):
         super().__init__()
+        if variant is not None and variant not in ("a", "b", "c"):
+            raise ValueError("invalid variant")
         if isinstance(width, bool) or not isinstance(width, int) or width < 4 or task not in ("ar", "od"):
             raise ValueError("invalid width or task")
-        self.width, self.task = width, task
+        self.width, self.task, self.variant = width, task, variant
+        if variant is not None:
+            self.schema = "adaptive-vcm-semantic-v8"
         self.trunk = nn.Sequential(nn.Conv2d(7, width, 3, padding=1), nn.SiLU(),
                                    nn.Conv2d(width, width, 3, padding=1), nn.SiLU())
         self.head = nn.Conv2d(width, 5, 1)
@@ -129,34 +148,57 @@ class MotionAwarePreprocessor(nn.Module):
                 state = current * (1 - keep) + state * keep
             states.append(state)
         alpha = (torch.stack(states, 2) * strength_scale).clamp(0, 1) * (1 - protection) * (1 - .75 * motion)
-        mixture_frames = maps[:, 1:].softmax(1)
-        low = (_experts(video, protection, cuts, self.task) * mixture_frames[:, :, None]).sum(1)
+        expert_maps = maps[:, 1:]
+        if self.variant == "b":
+            logits = expert_maps.reshape(b, t, 4, h, w).permute(0, 2, 1, 3, 4)
+            logit_states = []
+            logit_state = logits[:, :, 0]
+            for index in range(t):
+                current = logits[:, :, index]
+                if index:
+                    keep = .5 * (~cuts[:, index])[:, None, None, None].to(video) * (1 - motion[:, :, index])
+                    logit_state = current * (1 - keep) + logit_state * keep
+                logit_states.append(logit_state)
+            logits = torch.stack(logit_states, 2)
+            expert_maps = logits.permute(0, 2, 1, 3, 4).reshape(b * t, 4, h, w)
+        mixture_frames = expert_maps.softmax(1)
+        low = (_experts(video, protection, cuts, self.task, motion, self.variant) * mixture_frames[:, :, None]).sum(1)
         alpha_frames = alpha.permute(0, 2, 1, 3, 4).reshape(b * t, 1, h, w)
         result = (frames + alpha_frames * (low - frames)).clamp(0, 1)
         result = result.reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
         result = torch.where(protection == 1, video, result)
         if return_aux:
             mixture = mixture_frames.reshape(b, t, 4, h, w).permute(0, 2, 1, 3, 4)
-            return result, {"alpha": alpha, "raw_alpha": raw_alpha, "mixture": mixture}
+            aux = {"alpha": alpha, "raw_alpha": raw_alpha, "mixture": mixture}
+            if self.variant is not None:
+                aux["expert_logits"] = expert_maps.reshape(b, t, 4, h, w).permute(0, 2, 1, 3, 4)
+            return result, aux
         return result
 
 
-def profile_candidates(clip: np.ndarray, support: dict, task: str, qp: int) -> list[Candidate]:
+def profile_candidates(clip: np.ndarray, support: dict, task: str, qp: int,
+                       variant: str | None = None) -> list[Candidate]:
     """Return four experts x three strengths in ``PROFILE_NAMES`` order.
 
     QP validates the registered measurement condition; these reference pixel
     transforms have fixed strengths at every QP. All bytes/guards are measured
     by the caller. There is no identity profile or inference portfolio here.
     """
-    protection, _, cuts = validate_support(clip, support, task)
+    if variant is not None and variant not in ("a", "b", "c"):
+        raise ValueError("invalid variant")
+    protection, motion, cuts = validate_support(clip, support, task)
     if isinstance(qp, bool) or not isinstance(qp, (int, np.integer)) or not 0 <= qp <= 51:
         raise ValueError("invalid QP")
     video = torch.from_numpy(clip.astype(np.float32) / 255.).permute(3, 0, 1, 2)[None]
     mask = torch.from_numpy(protection)[None, None]
+    motion_tensor = torch.from_numpy(motion)[None, None]
     with torch.no_grad():
-        experts = _experts(video, mask, torch.from_numpy(cuts)[None], task)
+        experts = _experts(video, mask, torch.from_numpy(cuts)[None], task, motion_tensor, variant)
         source = video.permute(0, 2, 1, 3, 4).reshape(len(clip), 3, *clip.shape[1:3])
-        alpha = (1 - mask).permute(0, 2, 1, 3, 4).reshape(len(clip), 1, *clip.shape[1:3])
+        alpha = 1 - mask
+        if variant is not None:
+            alpha = alpha * (1 - .75 * motion_tensor)
+        alpha = alpha.permute(0, 2, 1, 3, 4).reshape(len(clip), 1, *clip.shape[1:3])
         candidates = []
         for expert_index, expert_name in enumerate(EXPERT_NAMES):
             for strength in PROFILE_STRENGTHS:

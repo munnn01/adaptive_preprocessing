@@ -24,6 +24,7 @@ from .profiles import ProfilePreprocessor
 
 ROOT = Path(__file__).resolve().parents[1]
 RANKING_SCHEMAS = ('adaptive-vcm-ranking-v4', 'adaptive-vcm-utility-v5', 'adaptive-vcm-portfolio-v6')
+SPATIAL_SCHEMAS = ('adaptive-vcm-motion-v7', 'adaptive-vcm-semantic-v8')
 
 
 def write_json(path: Path, value) -> None:
@@ -45,7 +46,7 @@ def code_manifest() -> dict:
 def choose_stream(clip, protection, task, codec, cfg, teachers, source_predictions, learned=None,
                   *, learned_mask=None, components=False):
     """Run encoder-only selection. There is no ground-truth or evaluator input."""
-    if getattr(learned, 'schema', None) == 'adaptive-vcm-motion-v7':
+    if getattr(learned, 'schema', None) in SPATIAL_SCHEMAS:
         from .motion_selection import choose_motion_stream
         return choose_motion_stream(clip,protection,task,codec,cfg,teachers,source_predictions,
                                     learned,learned_mask=learned_mask,components=components)
@@ -188,8 +189,9 @@ def run(args) -> dict:
         if not args.checkpoint:
             raise ValueError('V28 requires a trained motion checkpoint')
         early_state = torch.load(args.checkpoint, map_location='cpu', weights_only=True)
-        if not isinstance(early_state, dict) or early_state.get('schema') != 'adaptive-vcm-motion-v7':
-            raise ValueError('V28 requires a motion-v7 checkpoint')
+        expected_schema = 'adaptive-vcm-semantic-v8' if cfg.get('v29_variant') is not None else 'adaptive-vcm-motion-v7'
+        if not isinstance(early_state, dict) or early_state.get('schema') != expected_schema:
+            raise ValueError('V28/V29 requires a matching trained spatial checkpoint')
         if early_state.get('training_config') != cfg:
             raise ValueError('V28 checkpoint/evaluation configuration mismatch')
         early_model = load_preprocessor(early_state, args.task)
@@ -215,7 +217,7 @@ def run(args) -> dict:
     learned = None
     if args.checkpoint:
         state = early_state if early_state is not None else torch.load(args.checkpoint, map_location=device, weights_only=True)
-        if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema, 'adaptive-vcm-motion-v7', *RANKING_SCHEMAS) and state.get("training_config") != cfg:
+        if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema, *SPATIAL_SCHEMAS, *RANKING_SCHEMAS) and state.get("training_config") != cfg:
             raise ValueError("checkpoint/evaluation configuration mismatch")
         learned = (early_model if early_model is not None else load_preprocessor(state, args.task)).to(device)
         learned.eval()
@@ -241,10 +243,13 @@ def run(args) -> dict:
                                       'bank_oracle is an audit-only upper bound; learned_raw is ungated')
         manifest['proposal_budget'] = cfg['rank_top_k']
         write_json(args.out / 'manifest.json', manifest)
-    if getattr(learned,'schema',None) == 'adaptive-vcm-motion-v7':
+    if getattr(learned,'schema',None) in SPATIAL_SCHEMAS:
         manifest['component_scope']='same controls; three neural proposals in primary; same-K TRAIN static and full profile oracle are audit arms'
         manifest['proposal_budget']=3
         manifest['motion_source']='RGB optical-flow proxy; no codec motion vectors'
+        if cfg.get('v29_variant'):
+            manifest['semantic_variant']=cfg['v29_variant']
+            manifest['admission_policy']=getattr(learned,'admission_policy',None)
         write_json(args.out/'manifest.json',manifest)
     all_rows, geometry = {codec: [] for codec in args.codecs}, {}
     component_rows = {codec: [] for codec in args.codecs}
@@ -259,18 +264,18 @@ def run(args) -> dict:
             semantic = np.maximum.reduce([normalize_map(teacher.saliency(clip)) for teacher in teachers])
             protection = action_protection(clip, semantic)
             learned_mask = semantic_protection(semantic) if (isinstance(learned, RateAwarePreprocessor)
-                           or getattr(learned, 'schema', None) in (*RANKING_SCHEMAS,'adaptive-vcm-motion-v7')) else protection
+                           or getattr(learned, 'schema', None) in (*RANKING_SCHEMAS,*SPATIAL_SCHEMAS)) else protection
         else:
             source_predictions = [teachers[0].predict(clip)]
             source = source_predictions[0]
             protection = boxes_to_mask(*clip.shape[1:3], source["boxes"][source["scores"] >= cfg["od_score_threshold"]])
             learned_mask = protection
-        if getattr(learned,'schema',None) == 'adaptive-vcm-motion-v7':
+        if getattr(learned,'schema',None) in SPATIAL_SCHEMAS:
             from .motion_support import build_motion_support
             learned_mask=build_motion_support(clip,learned_mask,args.task)
         preparation_seconds = time.perf_counter() - preparation_start
         source_hash = hashlib.sha256(clip.tobytes()).hexdigest()
-        if getattr(learned,'schema',None) == 'adaptive-vcm-motion-v7':
+        if getattr(learned,'schema',None) in SPATIAL_SCHEMAS:
             if source_hash in learned.train_source_sha256.values():
                 raise ValueError('TRAIN/evaluation source pixel overlap')
         for codec_name in args.codecs:
@@ -358,7 +363,7 @@ def run(args) -> dict:
             if getattr(learned, 'schema', None) == 'adaptive-vcm-portfolio-v6':
                 decision['policy_fit']['proposal_origin_scope'] = 'per-point prior_only in selection audit; mixed low/high recipes'
                 decision['policy_fit']['recipes'] = learned.recipes
-    if getattr(learned,'schema',None) == 'adaptive-vcm-motion-v7':
+    if getattr(learned,'schema',None) in SPATIAL_SCHEMAS:
         from .motion_selection import motion_contribution
         decision['policy_contribution']={c:motion_contribution(rows,component_rows[c]) for c,rows in all_rows.items()}
         decision['proposal_budget']={'learned':3,'static':3,'profile_oracle':12,
@@ -366,6 +371,11 @@ def run(args) -> dict:
         decision['policy_fit']={'scope':'TRAIN measured feasible pixel imitation, fixed final-LAST; no codec-gradient or DEV checkpoint selection',
                                 'motion_source':'RGB optical-flow proxy, not codec motion vectors',
                                 'geometry':'original frame coordinates; no crop metadata or decoder change'}
+        if cfg.get('v29_variant'):
+            decision['policy_fit'].update(variant=cfg['v29_variant'],
+                objective='direct profile expert/alpha supervision and editable RGB imitation with capped measured extra-byte utility',
+                admission_policy=getattr(learned,'admission_policy',None),
+                calibration_scope='C uses disjoint TRAIN sources; policy_unrestricted is the same checkpoint without extra admission')
     write_json(args.out / "summary.json", decision)
     print(json.dumps(decision, indent=2, allow_nan=False), flush=True)
     return decision

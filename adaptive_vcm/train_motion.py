@@ -7,6 +7,7 @@ enters fitting. Identity is the target whenever a profile adds no guarded bytes.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import math
@@ -28,6 +29,81 @@ ROOT = Path(__file__).resolve().parents[1]
 QPS = (30, 35, 40, 45, 50)
 CODECS = ('h264', 'h265')
 LEARNING_RATE = 1e-3
+
+
+def semantic_group_weights(records):
+    """Keep every condition, equalize codec/QP groups and present target classes."""
+    if not records:
+        raise ValueError('nonempty semantic fitting records required')
+    keys = [(r['codec'], r['qp'], r['target_profile'] != 'identity') for r in records]
+    counts = Counter(keys)
+    groups = {(c, q) for c, q, _ in counts}
+    classes = Counter((c, q) for c, q, _ in counts)
+    return [len(records) / (len(groups) * classes[k[:2]] * counts[k]) for k in keys]
+
+
+def semantic_loss(output, target, aux, protection, row, group_weight):
+    """Distill measured expert/strength; hard cores cannot dilute editable loss."""
+    from .motion_learned import EXPERT_NAMES, PROFILE_NAMES
+    positive = row['target_profile'] != 'identity'
+    if positive and row['target_profile'] not in PROFILE_NAMES:
+        raise ValueError('unknown semantic target profile')
+    editable = 1 - protection
+    denominator = editable.sum().clamp_min(1e-8)
+    rgb = ((output - target).square() * editable).sum() / (3 * denominator)
+    strength = int(row['target_profile'].rsplit('_', 1)[1]) / 100 if positive else 0.
+    alpha = ((aux['raw_alpha'] - strength).square() * editable).sum() / denominator
+    mixture = aux['mixture'].clamp_min(1e-8)
+    expert = mixture.sum() * 0
+    if positive:
+        name = row['target_profile'][len('motion_'):].rsplit('_', 1)[0]
+        index = EXPERT_NAMES.index(name)
+        expert = (-mixture[:, index:index + 1].log() * editable).sum() / denominator
+    control_bytes = row['controls_coded_bytes']
+    marginal = row['marginal_saved_bytes'] if positive else 0
+    if control_bytes <= 0 or marginal < 0 or not math.isfinite(marginal):
+        raise ValueError('invalid actual byte utility')
+    utility = 1 + min(1., 10 * marginal / control_bytes)
+    entropy = -(mixture * mixture.log()).sum(1, keepdim=True)
+    top = mixture.topk(2, dim=1).values
+    parts = dict(rgb_loss=rgb, alpha_loss=alpha, expert_loss=expert,
+                 utility_weight=output.new_tensor(utility),
+                 alpha_mean=(aux['alpha'] * editable).sum() / denominator,
+                 raw_alpha_mean=(aux['raw_alpha'] * editable).sum() / denominator,
+                 expert_entropy=(entropy * editable).sum() / denominator,
+                 expert_margin=((top[:, :1] - top[:, 1:]) * editable).sum() / denominator)
+    return group_weight * utility * (rgb + .05 * alpha + .01 * expert), parts
+
+
+def calibration_split(train_ids, seed):
+    """Reserve a deterministic source-level quarter, independent of plan order."""
+    if len(train_ids) < 2 or len(set(train_ids)) != len(train_ids):
+        raise ValueError('calibration requires at least two unique TRAIN sources')
+    count = max(1, len(train_ids) // 4)
+    ranked = sorted(train_ids, key=lambda i: hashlib.sha256(f'{seed}/{i}'.encode()).hexdigest())
+    selected = set(ranked[:count])
+    return ([i for i in train_ids if i not in selected], [i for i in train_ids if i in selected])
+
+
+def fit_admission_policy(records, task):
+    """Fit nonpositive teacher-distance headroom from actual marginal byte wins."""
+    if task not in ('ar', 'od') or not records:
+        raise ValueError('complete TRAIN calibration grid required')
+    ids = {r['source_id'] for r in records}
+    expected = {(i, c, q) for i in ids for c in CODECS for q in QPS}
+    actual = [(r['source_id'], r['codec'], r['qp']) for r in records]
+    if len(actual) != len(expected) or set(actual) != expected:
+        raise ValueError('complete TRAIN calibration grid required')
+    policy, slack, teacher_count = {}, .1 if task == 'ar' else .03, 2 if task == 'ar' else 1
+    for codec in CODECS:
+        for qp in QPS:
+            rows = [r for r in records if (r['codec'], r['qp']) == (codec, qp)]
+            distances = [max(a['distances']) for r in rows for a in r['proposals']
+                         if _eligible(a, r['anchor_coded_bytes'], slack, .01, teacher_count)
+                         and a['coded_bytes'] < r['controls_coded_bytes'] and max(a['distances']) <= 0]
+            policy[f'{codec}/{qp}'] = dict(threshold=float(np.quantile(distances, .75)) if distances else 0.,
+                enabled=bool(distances), calibration_points=len(rows), n_nonworsening=len(distances))
+    return policy
 
 
 def dense_schedule(plan, qps, seed):
@@ -184,6 +260,9 @@ def _validate_config(cfg):
             or cfg.get('ar_mode') != 'motion_spatial' or cfg.get('od_mode') != 'motion_spatial'
             or cfg.get('motion_static_k') != 3 or cfg.get('motion_proposal_scales') != [.5, 1., 1.5]):
         raise ValueError('V28 requires registered frozen teachers and unchanged strict guards')
+    variant = cfg.get('v29_variant')
+    if variant is not None and (variant not in ('a', 'b', 'c') or cfg.get('experiment') != f'v29-{variant}'):
+        raise ValueError('invalid V29 variant or experiment')
 
 
 def _predict(teachers, clip, task):
@@ -204,7 +283,9 @@ def _measure_group(clip, support, protection, task, codec_name, qp, cfg, teacher
                    source_predictions, profile_candidates, profile_names, foreground_known):
     codec = StandardCodec(codec_name, qp, cfg['preset'], cfg['fps'])
     controls = make_candidates(clip, protection, task, qp, cfg[f'{task}_candidates'])
-    profiles = profile_candidates(clip, support, task, qp)
+    variant = cfg.get('v29_variant')
+    profiles = (profile_candidates(clip, support, task, qp) if variant is None else
+                profile_candidates(clip, support, task, qp, variant=variant))
     if [c.name for c in profiles] != list(profile_names):
         raise ValueError('profile registry changed during TRAIN collection')
     if not foreground_known:
@@ -261,13 +342,17 @@ def _fit(args, records, device):
     from .motion_learned import MotionAwarePreprocessor
     # Teacher construction and collection must not change initialization.
     torch.manual_seed(args.seed)
-    model = MotionAwarePreprocessor(args.width, args.task).to(device).train()
+    variant = getattr(args, 'variant', None)
+    model = (MotionAwarePreprocessor(args.width, args.task) if variant is None else
+             MotionAwarePreprocessor(args.width, args.task, variant=variant)).to(device).train()
+    group_weights = semantic_group_weights(records) if variant is not None else None
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     rng = np.random.default_rng(args.seed)
     steps, gradient_total, edited_total, epoch_logs = 0, 0., 0, []
     for epoch in range(args.epochs):
         epoch_loss = epoch_gradient = 0.
         epoch_edits = epoch_target_edits = epoch_pixels = epoch_positive = 0
+        class_diagnostics = {'positive': [], 'identity': []}
         for index in rng.permutation(len(records)):
             row = records[int(index)]
             # One example on device at once; uint8 corpus remains on disk.
@@ -282,16 +367,30 @@ def _fit(args, records, device):
             else:
                 with np.load(args.out / row['target_cache'], allow_pickle=False) as cache:
                     target = torch.from_numpy(cache['target'].copy()).to(source).permute(3, 0, 1, 2)[None] / 255
-            output = model(source, source.new_tensor([row['qp']]),
-                           source.new_tensor([int(row['codec'] == 'h265')]), protection,
-                           motion=motion, cuts=cuts)
-            weight = 2. if row['qp'] >= 40 else 1.
-            loss = weight * F.mse_loss(output, target)
+            semantic_parts = None
+            if variant is None:
+                output = model(source, source.new_tensor([row['qp']]),
+                               source.new_tensor([int(row['codec'] == 'h265')]), protection,
+                               motion=motion, cuts=cuts)
+                weight = 2. if row['qp'] >= 40 else 1.
+                loss = weight * F.mse_loss(output, target)
+            else:
+                output, aux = model(source, source.new_tensor([row['qp']]),
+                                    source.new_tensor([int(row['codec'] == 'h265')]), protection,
+                                    motion=motion, cuts=cuts, return_aux=True)
+                weight = 1.
+                loss, semantic_parts = semantic_loss(output, target, aux, protection, row,
+                                                      group_weights[int(index)])
             if not torch.isfinite(loss):
                 raise RuntimeError('nonfinite RGB imitation objective')
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1., error_if_nonfinite=True)
+            head_gradients = None
+            if variant is not None:
+                head = model.head.weight.grad
+                head_gradients = dict(alpha_gradient_norm=float(head[:1].norm()),
+                                      expert_gradient_norm=float(head[1:].norm()))
             optimizer.step()
             with torch.no_grad():
                 edited = int((output.mul(255).round() != source.mul(255).round()).any(1).sum())
@@ -310,17 +409,100 @@ def _fit(args, records, device):
                        loss=float(loss.detach()), qp_weight=weight, gradient_norm=float(norm),
                        nonzero_edit_pixels=edited, output_edit_fraction=edited / pixels,
                        target_edit_fraction=target_edits / pixels, target_profile=row['target_profile'])
+            if semantic_parts is not None:
+                log.update(group_weight=group_weights[int(index)],
+                           **{key: float(value.detach()) for key, value in semantic_parts.items()},
+                           **head_gradients)
+                kind = 'positive' if row['target_profile'] != 'identity' else 'identity'
+                class_diagnostics[kind].append({k: log[k] for k in
+                    ('loss', 'rgb_loss', 'alpha_loss', 'expert_loss', 'alpha_mean', 'raw_alpha_mean',
+                     'expert_entropy', 'expert_margin', 'gradient_norm', 'alpha_gradient_norm',
+                     'expert_gradient_norm')})
             _append(args.out / 'train.jsonl', log)
         summary = dict(epoch=epoch + 1, epochs=args.epochs, steps=steps,
                        mean_loss=epoch_loss / len(records), mean_gradient_norm=epoch_gradient / len(records),
                        output_edit_fraction=epoch_edits / epoch_pixels, target_edit_fraction=epoch_target_edits / epoch_pixels,
                        positive_targets=epoch_positive, identity_targets=len(records) - epoch_positive)
+        if variant is not None:
+            for kind, values in class_diagnostics.items():
+                summary[f'{kind}_loss'] = dict(points=len(values),
+                    **({k: sum(v[k] for v in values) / len(values) for k in values[0]} if values else {}))
         epoch_logs.append(summary)
         _append(args.out / 'epochs.jsonl', summary)
         print(json.dumps(summary), flush=True)
     return model, dict(steps=steps, gradient_norm_sum=gradient_total,
                        mean_gradient_norm=gradient_total / steps, nonzero_edit_pixels_sum=edited_total,
                        epoch_logs=epoch_logs)
+
+
+def _prediction_digest(predictions):
+    return _sha(json.dumps(predictions, sort_keys=True, allow_nan=False,
+                           default=lambda value: value.tolist()).encode())
+
+
+def _calibrate(args, records, model, cfg, teachers, calibration_ids):
+    """Measure the final model on disjoint TRAIN sources, with decoded teachers."""
+    from .motion_selection import neural_candidates, PROPOSALS
+    rows = [r for r in records if r['source_id'] in set(calibration_ids)]
+    model.eval()
+    measured, previous_cache = [], None
+    for row in rows:
+        if row['source_cache'] != previous_cache:
+            cache_path = args.out / row['source_cache']
+            if _sha(cache_path.read_bytes()) != row['source_cache_sha256']:
+                raise ValueError('calibration source cache changed')
+            with np.load(cache_path, allow_pickle=False) as cache:
+                clip = cache['source'].copy()
+                support = {key: cache[key].copy() for key in ('protection', 'motion', 'cuts')}
+                support['metadata'] = json.loads(str(cache['metadata']))
+            if _sha(clip.tobytes()) != row['source_sha256']:
+                raise ValueError('calibration source pixels changed')
+            source_predictions = _predict(teachers, clip, args.task)
+            previous_cache = row['source_cache']
+        codec = StandardCodec(row['codec'], row['qp'], cfg['preset'], cfg['fps'])
+        anchor = codec.roundtrip(clip)
+        if (anchor.coded_bytes != row['anchor_coded_bytes'] or
+                _sha(anchor.data) != row['controls'][0]['stream_sha256']):
+            raise ValueError('calibration anchor differs from original TRAIN control')
+        anchor_predictions = _predict(teachers, anchor.decoded, args.task)
+        prediction_cache = {_sha(anchor.data): anchor_predictions}
+        candidates = neural_candidates(clip, support, codec, model)
+        if [c.name for c in candidates] != [name for name, _ in PROPOSALS]:
+            raise ValueError('calibration requires exactly three registered neural proposals')
+        proposals = []
+        for candidate in candidates:
+            stream = codec.roundtrip(candidate.clip)
+            stream_hash = _sha(stream.data)
+            same = stream.data == anchor.data
+            if stream_hash not in prediction_cache:
+                prediction_cache[stream_hash] = _predict(teachers, stream.decoded, args.task)
+            predictions = prediction_cache[stream_hash]
+            distances, decisions = (((0.,) * len(teachers), (True,) * len(teachers)) if same else
+                relative_guard(args.task, source_predictions, anchor_predictions, predictions, cfg))
+            proposals.append(dict(name=candidate.name, coded_bytes=int(stream.coded_bytes),
+                distances=[float(d) if math.isfinite(d) else None for d in distances],
+                decisions=[bool(d) for d in decisions], identity_stream=same,
+                pixel_sha256=_sha(candidate.clip.tobytes()), stream_sha256=stream_hash,
+                decoded_sha256=_sha(stream.decoded.tobytes()), predictions_sha256=_prediction_digest(predictions),
+                shape=list(candidate.clip.shape), codec_seconds=float(stream.seconds)))
+        result = dict(task=args.task, source_id=row['source_id'], codec=row['codec'], qp=row['qp'],
+            source_sha256=row['source_sha256'], source_cache=row['source_cache'],
+            source_cache_sha256=row['source_cache_sha256'], support_sha256=row['support_sha256'],
+            anchor_coded_bytes=int(anchor.coded_bytes), anchor_stream_sha256=_sha(anchor.data),
+            anchor_decoded_sha256=_sha(anchor.decoded.tobytes()),
+            source_predictions_sha256=_prediction_digest(source_predictions),
+            anchor_predictions_sha256=_prediction_digest(anchor_predictions),
+            controls=row['controls'], controls_selected=row['controls_selected'],
+            controls_coded_bytes=row['controls_coded_bytes'], proposals=proposals)
+        measured.append(result)
+        _append(args.out / 'calibration_measurements.jsonl', result)
+    policy = fit_admission_policy(measured, args.task)
+    return dict(calibration_ids=list(calibration_ids), calibration_ids_sha256=fingerprint(calibration_ids),
+                calibration_measurements=len(measured),
+                calibration_measurements_sha256=_sha((args.out / 'calibration_measurements.jsonl').read_bytes()),
+                admission_policy=policy,
+                admission_policy_sha256=_sha(_json_bytes(policy)),
+                calibration_rule='TRAIN-only p75 max teacher-relative distance among nonpositive guarded extra-byte actions')
 
 
 def train(args):
@@ -339,6 +521,10 @@ def train(args):
     if len(plan) != args.count or any(partition(f'coco2017/{i}' if args.task == 'od' else i) != 'train' for i in train_ids):
         raise ValueError('incomplete or held-out source in TRAIN collection')
     fingerprint(train_ids)
+    variant = cfg.get('v29_variant')
+    args.variant = variant
+    fit_ids, calibration_ids = (calibration_split(train_ids, args.seed) if variant == 'c'
+                                else (list(train_ids), []))
     schedule = dense_schedule(plan, cfg['qps'], args.seed)
     from .motion_learned import PROFILE_NAMES, profile_candidates
     from .motion_support import build_motion_support
@@ -364,6 +550,19 @@ def train(args):
                     source='fresh spatial renderer; fixed epochs; final-LAST; no DEV/TEST selection',
                     objective='RGB MSE imitation of actual-codec teacher-feasible extra savings beyond controls; otherwise source identity',
                     limitations='TRAIN teacher-feasible profile targets do not guarantee learned inference feasibility or held-out task quality.')
+    if variant is not None:
+        manifest.update(schema='adaptive-vcm-training-v8', variant=variant,
+            fit_ids=fit_ids, fit_ids_sha256=fingerprint(fit_ids), calibration_ids=calibration_ids,
+            fit_count=len(fit_ids), calibration_count=len(calibration_ids),
+            objective='editable-normalized RGB imitation + measured expert/strength/gate distillation; balanced codec/QP/target classes; capped actual marginal-byte utility',
+            objective_weights=dict(rgb=1., alpha=.05, expert=.01),
+            utility_rule='1 + min(1, 10 * actual_marginal_saved_bytes / original_control_bytes)',
+            high_qp_weight=1., source='fresh semantic renderer; fixed epochs; final-LAST; no DEV/GT selection')
+        if calibration_ids:
+            manifest['calibration_ids_sha256'] = fingerprint(calibration_ids)
+            manifest['fit_calibration_caveat'] = 'C fits only the non-calibration TRAIN sources; A/B fit all collected TRAIN sources.'
+            print(json.dumps(dict(warning=manifest['fit_calibration_caveat'],
+                                  fit_count=len(fit_ids), calibration_count=len(calibration_ids))), flush=True)
     _write_json(args.out / 'training_manifest.json', manifest)
     records, previous_source = [], None
     for measurement, (source_index, codec_name, qp) in enumerate(schedule, 1):
@@ -406,24 +605,38 @@ def train(args):
         if measurement == 1 or measurement % 25 == 0 or measurement == len(schedule):
             print(json.dumps({k: row[k] for k in ('measurement', 'source_id', 'codec', 'qp', 'target_profile', 'marginal_saved_bytes')}), flush=True)
     validate_training_records(records, train_ids, args.task, PROFILE_NAMES)
-    static_orders = fit_static_orders(records, PROFILE_NAMES, k=3)
+    fit_set = set(fit_ids)
+    fit_records = [r for r in records if r['source_id'] in fit_set]
+    static_orders = fit_static_orders(fit_records, PROFILE_NAMES, k=3)
     measurements_hash = _sha((args.out / 'measurements.jsonl').read_bytes())
     train_source_sha256 = {row['source_id']: row['source_sha256'] for row in records}
-    del teachers
-    model, fitting = _fit(args, records, device)
+    if variant != 'c':
+        del teachers
+    model, fitting = _fit(args, fit_records, device)
+    calibration = _calibrate(args, records, model, cfg, teachers, calibration_ids) if variant == 'c' else {}
+    if variant == 'c':
+        del teachers
     positive = sum(r['target_profile'] != 'identity' for r in records)
     manifest.update(**fitting, measurements_sha256=measurements_hash, static_orders=static_orders,
                     positive_targets=positive, identity_targets=len(records) - positive,
                     marginal_saved_bytes=sum(r['marginal_saved_bytes'] for r in records),
                     train_source_sha256=train_source_sha256)
+    if variant is not None:
+        manifest.update(fit_positive_targets=sum(r['target_profile'] != 'identity' for r in fit_records),
+                        fit_identity_targets=sum(r['target_profile'] == 'identity' for r in fit_records),
+                        **calibration)
     _write_json(args.out / 'training_manifest.json', manifest)
-    torch.save(dict(schema=model.schema, task=args.task, width=args.width, model=model.state_dict(),
+    state = dict(schema=model.schema, task=args.task, width=args.width, model=model.state_dict(),
                     steps=fitting['steps'], epochs=args.epochs, measurements=len(records), train_count=len(plan),
                     train_ids=train_ids, train_ids_sha256=manifest['train_ids_sha256'], training_config=cfg,
                     measurements_sha256=measurements_hash, static_orders=static_orders, profile_names=list(PROFILE_NAMES),
                     seed=args.seed, config_sha256=config_sha256, code_sha256=code_sha256,
-                    code=code, train_source_sha256=train_source_sha256),
-               args.out / 'preprocessor_last.pth')
+                    code=code, train_source_sha256=train_source_sha256)
+    if variant is not None:
+        state.update(variant=variant, fit_ids=fit_ids, fit_ids_sha256=fingerprint(fit_ids),
+                     calibration_ids=calibration_ids)
+        state.update(calibration)
+    torch.save(state, args.out / 'preprocessor_last.pth')
     return manifest
 
 

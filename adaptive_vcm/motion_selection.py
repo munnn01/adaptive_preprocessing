@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 
 import numpy as np
@@ -19,10 +20,13 @@ from .preprocessing import Candidate, make_candidates
 from .selection import Observation, relative_guard, select
 
 SCHEMA = 'adaptive-vcm-motion-v7'
+SEMANTIC_SCHEMA = 'adaptive-vcm-semantic-v8'
 PROPOSALS = (('learned_motion_s050', .5), ('learned_motion_s100', 1.), ('learned_motion_s150', 1.5))
 
 
 def validate_motion_config(cfg):
+    if 'v29_variant' in cfg and cfg['v29_variant'] not in ('a', 'b', 'c'):
+        raise ValueError('invalid V29 variant')
     if (cfg.get('qps') != [30,35,40,45,50] or cfg.get('ar_mode') != 'motion_spatial'
             or cfg.get('od_mode') != 'motion_spatial' or cfg.get('motion_static_k') != 3
             or cfg.get('motion_proposal_scales') != [.5,1.,1.5]
@@ -34,10 +38,14 @@ def validate_motion_config(cfg):
 
 def load_motion_preprocessor(state, task):
     """Reject unverifiable/incomplete training; no implicit untrained fallback."""
-    if state.get('schema') != SCHEMA or task not in ('ar','od') or state.get('task') != task:
+    semantic = state.get('schema') == SEMANTIC_SCHEMA
+    if state.get('schema') not in (SCHEMA, SEMANTIC_SCHEMA) or task not in ('ar','od') or state.get('task') != task:
         raise ValueError('motion checkpoint task/schema mismatch')
     cfg = state.get('training_config', {})
     validate_motion_config(cfg)
+    variant = cfg.get('v29_variant')
+    if semantic != (variant is not None) or semantic and state.get('variant') != variant:
+        raise ValueError('semantic checkpoint/configuration variant mismatch')
     ids=state.get('train_ids', [])
     count, epochs = state.get('train_count'), state.get('epochs')
     if (type(count) is not int or count < 1 or type(epochs) is not int or epochs < 1
@@ -47,12 +55,52 @@ def load_motion_preprocessor(state, task):
         raise ValueError('motion TRAIN identity hash mismatch')
     if any(partition(f'coco2017/{i}' if task=='od' else i) != 'train' for i in ids):
         raise ValueError('motion checkpoint contains non-TRAIN sources')
+    fit_ids = ids
+    if semantic:
+        fit_ids = state.get('fit_ids', [])
+        calibration_ids = state.get('calibration_ids', [])
+        if (not isinstance(fit_ids, list) or not fit_ids or not isinstance(calibration_ids, list)
+                or any(type(i) is not str for i in fit_ids + calibration_ids)
+                or len(set(fit_ids)) != len(fit_ids) or len(set(calibration_ids)) != len(calibration_ids)
+                or set(fit_ids) & set(calibration_ids) or set(fit_ids + calibration_ids) != set(ids)):
+            raise ValueError('invalid disjoint semantic TRAIN partition')
+        if variant == 'c':
+            if (len(calibration_ids) != max(1, count // 4)
+                    or type(state.get('calibration_measurements')) is not int
+                    or state['calibration_measurements'] != 10 * len(calibration_ids)
+                    or state.get('fit_ids_sha256') != fingerprint(fit_ids)
+                    or state.get('calibration_ids_sha256') != fingerprint(calibration_ids)
+                    or not re.fullmatch(r'[0-9a-f]{64}', str(state.get('calibration_measurements_sha256', '')))):
+                raise ValueError('missing semantic calibration provenance')
+            policy = state.get('admission_policy', {})
+            groups = {f'{c}/{q}' for c in ('h264', 'h265') for q in cfg['qps']}
+            if not isinstance(policy, dict) or set(policy) != groups:
+                raise ValueError('incomplete semantic calibration policy')
+            for entry in policy.values():
+                if not isinstance(entry, dict):
+                    raise ValueError('malformed semantic calibration policy')
+                threshold, enabled = entry.get('threshold'), entry.get('enabled')
+                points, support = entry.get('calibration_points'), entry.get('n_nonworsening')
+                if (type(threshold) not in (int, float) or not math.isfinite(threshold) or threshold > 0
+                        or type(enabled) is not bool or type(points) is not int or points != len(calibration_ids)
+                        or type(support) is not int or not 0 <= support <= 3 * points
+                        or enabled != (support > 0)):
+                    raise ValueError('invalid non-worsening semantic calibration policy')
+            try:
+                policy_hash = hashlib.sha256(json.dumps(
+                    policy, sort_keys=True, ensure_ascii=False, allow_nan=False).encode('utf-8')).hexdigest()
+            except (TypeError, ValueError) as error:
+                raise ValueError('malformed semantic calibration policy') from error
+            if state.get('admission_policy_sha256') != policy_hash:
+                raise ValueError('semantic calibration policy hash mismatch')
+        elif calibration_ids or fit_ids != ids or state.get('admission_policy'):
+            raise ValueError('unexpected calibration in uncalibrated semantic variant')
     source_hashes=state.get('train_source_sha256',{})
     if (not isinstance(source_hashes,dict) or set(source_hashes)!=set(ids)
             or any(not isinstance(v,str) or not re.fullmatch(r'[0-9a-f]{64}',v) for v in source_hashes.values())):
         raise ValueError('missing motion TRAIN source-pixel hashes')
     if (type(state.get('measurements')) is not int or state['measurements'] != count*10
-            or type(state.get('steps')) is not int or state['steps'] != epochs*count*10
+            or type(state.get('steps')) is not int or state['steps'] != epochs*len(fit_ids)*10
             or not re.fullmatch(r'[0-9a-f]{64}',str(state.get('measurements_sha256','')))):
         raise ValueError('incomplete motion grid/optimization or missing measurement hash')
     if state.get('profile_names') != list(PROFILE_NAMES):
@@ -72,7 +120,8 @@ def load_motion_preprocessor(state, task):
             or any(not isinstance(v,torch.Tensor) or not v.is_floating_point()
                    or not torch.isfinite(v).all() for v in weights.values())):
         raise ValueError('nonfinite or malformed motion model state')
-    model=MotionAwarePreprocessor(state['width'],task)
+    model=(MotionAwarePreprocessor(state['width'],task,variant=variant) if semantic
+           else MotionAwarePreprocessor(state['width'],task))
     try:
         model.load_state_dict(weights,strict=True)
     except (RuntimeError,TypeError) as error:
@@ -82,6 +131,8 @@ def load_motion_preprocessor(state, task):
     model.static_orders={group:list(names) for group,names in orders.items()}
     model.training_measurements_sha256=state['measurements_sha256']
     model.train_source_sha256=dict(source_hashes)
+    if variant == 'c':
+        model.admission_policy={group:dict(entry) for group,entry in state['admission_policy'].items()}
     return model
 
 
@@ -116,6 +167,9 @@ def choose_motion_stream(clip,protection,task,codec,cfg,teachers,source_predicti
     validate_motion_config(cfg)
     if getattr(model,'task',None)!=task:
         raise ValueError('motion model/selection task mismatch')
+    variant = cfg.get('v29_variant')
+    if variant != getattr(model, 'variant', None):
+        raise ValueError('motion model/selection variant mismatch')
     known=task=='ar' or np.any(source_predictions[0]['scores']>=cfg['od_score_threshold'])
     controls=make_candidates(clip,protection,task,codec.qp,cfg[f'{task}_candidates'])
     support=None
@@ -129,9 +183,10 @@ def choose_motion_stream(clip,protection,task,codec,cfg,teachers,source_predicti
     primary_count=len(candidates)
     static_names=model.static_orders[f'{codec.codec}/{codec.qp}'] if known else []
     if components and known:
-        candidates+=profile_candidates(clip,support,task,codec.qp)
+        candidates+=(profile_candidates(clip,support,task,codec.qp,variant=variant) if variant is not None
+                     else profile_candidates(clip,support,task,codec.qp))
     # All proposals are fixed before a nonidentity outcome is observed.
-    encoded,predictions,observations,audit=[],[],[],[]
+    encoded,predictions,observations,original_observations,audit=[],[],[],[],[]
     slack=cfg['ar_kl_slack' if task=='ar' else 'od_distance_slack']
     for index,candidate in enumerate(candidates):
         stream=codec.roundtrip(candidate.clip)
@@ -141,7 +196,14 @@ def choose_motion_stream(clip,protection,task,codec,cfg,teachers,source_predicti
         distances,decisions=((tuple(0. for _ in teachers),tuple(True for _ in teachers))
                              if index==0 or same else relative_guard(task,source_predictions,predictions[0],trial,cfg))
         encoded.append(stream); predictions.append(trial)
-        observations.append(Observation(candidate.name,stream.coded_bytes,distances,decisions))
+        original = Observation(candidate.name,stream.coded_bytes,distances,decisions)
+        original_observations.append(original)
+        admission = None
+        if variant == 'c' and candidate.name.startswith('learned_motion_'):
+            policy = model.admission_policy[f'{codec.codec}/{codec.qp}']
+            admission = bool(policy['enabled'] and all(np.isfinite(d) and d <= policy['threshold'] for d in distances))
+        observations.append(original if admission is not False else
+                            Observation(candidate.name, stream.coded_bytes, distances, tuple(False for _ in teachers)))
         audit.append({'name':candidate.name,'coded_bytes':stream.coded_bytes,
                       'relative_task_distance':[float(d) if np.isfinite(d) else None for d in distances],
                       'preserves_decision':list(decisions),'codec_seconds':stream.seconds,
@@ -151,6 +213,9 @@ def choose_motion_stream(clip,protection,task,codec,cfg,teachers,source_predicti
                       'primary_pool':index<primary_count,
                       'proposal_origin':('learned_spatial' if candidate.name.startswith('learned_motion_') else
                                          'fixed_control' if index<len(controls) else 'fixed_profile_audit')})
+        if admission is not None:
+            audit[-1].update(policy_admitted=admission, admission_threshold=policy['threshold'],
+                             policy_origin='disjoint_TRAIN_calibration')
     audit[0]['motion_support']=None if support is None else support['metadata']
     audit[0]['motion_support_sha256']=None if support is None else support_hash(support)
     audit[0]['learned_proposal_order']=[c.name for c in learned]
@@ -170,6 +235,8 @@ def choose_motion_stream(clip,protection,task,codec,cfg,teachers,source_predicti
     indices={'controls':winner(control_ids),'learned_guarded':winner([0,*learned_ids]),
              'learned_raw':raw,'static_adaptive':winner([*control_ids,*static_ids]),
              'profile_oracle':winner([*control_ids,*profile_ids])}
+    if variant == 'c':
+        indices['policy_unrestricted']=select(original_observations[:primary_count],slack,cfg['min_savings'])
     alternatives={arm:(encoded[i],candidates[i].name) for arm,i in indices.items()}
     return encoded[0],encoded[primary],candidates[primary].name,audit,alternatives
 

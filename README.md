@@ -1,9 +1,21 @@
 # Adaptive Video Preprocessing for VCM
 
-Bộ preprocessing V22–V28 cho **Action Recognition (AR)** và **Object Detection (OD)**,
+Bộ preprocessing V22–V29 cho **Action Recognition (AR)** và **Object Detection (OD)**,
 phát triển từ bài học V1–V21 và tài liệu [IEEE TCSVT, IEEE TIP, CVPR cùng các
 bài trong LAB](docs/RESEARCH_DESIGN.md). Mục tiêu: **BD-rate < −10% so với từng
 H.264 và H.265**, theo Top-1 của AR và COCO mAP của OD.
+
+**V29, 2026-10-06:** ba nhánh A/B/C cải thiện pipeline hiện có: giám sát trực tiếp
+expert/mức lọc từ byte thật; thử lọc nền static/dynamic theo task; hiệu chỉnh
+điều kiện nhận learned trên TRAIN tách khỏi tập fit. Vòng đầu TRAIN32/DEV32
+cho cả AR/OD, đủ hai codec và năm QP; sau đó chạy riêng AR128 rồi OD100.
+Giữ ba đề xuất neural, tọa độ RGB và bộ đánh giá độc lập. Xem
+[giao thức và giới hạn tài liệu SSVC](docs/V29_PROTOCOL.md). Toàn bộ 359 test đã
+pass và review đã xử lý các lỗi phát hiện. Chưa có BD-rate V29.
+
+V28 full đã được kiểm toán: AR Top-1 **−6,758% / −2,333%**, OD mAP
+**−9,594% / −6,642%** (H.264 / H.265). Learned chọn132/1280 điểm AR và168/1000
+điểm OD; mục tiêu bốn trường hợp cùng dưới−10% chưa đạt.
 
 **V28, 2026-10-06:** learned preprocessor dự đoán mức lọc và hỗn hợp bốn expert
 theo từng pixel, dùng bảo vệ semantic/chuyển động và nền ổn định theo đoạn video.
