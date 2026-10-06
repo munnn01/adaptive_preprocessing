@@ -31,6 +31,10 @@ def pool_environment(path: Path, account: str):
 
 
 def prepare(args):
+    if args.task=='both':
+        return prepare_joint(args)
+    if args.task not in ('ar','od'):
+        raise ValueError('unsupported job task')
     if not re.fullmatch(r"[0-9a-f]{40}", args.commit or ""):
         raise ValueError("an immutable full Git commit SHA is required")
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{5,70}", args.slug) or not re.fullmatch(r"[a-zA-Z0-9_-]+", args.account):
@@ -78,7 +82,7 @@ test -n "$ANN" && test -n "$IMAGES"
         data_arguments = '--task od --root "$IMAGES" --annotations "$ANN"'
     checkpoint = ""
     recipe = getattr(args, "recipe", "v22")
-    if recipe not in ("v22", "v23", "v24", "v25", "v26", "v27"):
+    if recipe not in ("v22", "v23", "v24", "v25", "v26", "v27", "v28"):
         raise ValueError("unsupported recipe")
     if recipe == "v24" and (args.task != "ar" or args.mode != "learned"):
         raise ValueError("V24 recipe is registered for learned AR only")
@@ -90,10 +94,18 @@ test -n "$ANN" && test -n "$IMAGES"
         raise ValueError('ranking collection needs at least ten codec/QP groups')
     if recipe == 'v27' and measurements != train_count * 10:
         raise ValueError('V27 requires a complete TRAIN codec/QP grid with train_count*10 measurements')
+    epochs=getattr(args,'epochs',4)
+    width=getattr(args,'width',12)
+    if recipe=='v28':
+        if (args.mode!='learned' or type(train_count) is not int or train_count<2
+                or measurements!=train_count*10 or type(epochs) is not int or epochs<1
+                or type(width) is not int or width<4):
+            raise ValueError('V28 requires a learned recipe, complete TRAIN codec/QP grid and valid epochs/width')
     config_option = f" --config configs/{recipe}_screen.json" if recipe != "v22" else ""
     trainer = {"v22": "adaptive_vcm.train", "v23": "adaptive_vcm.train_rateaware",
                "v24": "adaptive_vcm.train_profiles", 'v25': 'adaptive_vcm.train_ranking',
-               'v26': 'adaptive_vcm.train_utility', 'v27': 'adaptive_vcm.train_portfolio'}[recipe]
+               'v26': 'adaptive_vcm.train_utility', 'v27': 'adaptive_vcm.train_portfolio',
+               'v28': 'adaptive_vcm.train_motion'}[recipe]
     if recipe == "v24":
         # Paired guard-only control: exact V23 final checkpoint, unchanged config,
         # current corrected guard. Never train from or select a model on DEV.
@@ -102,19 +114,21 @@ test -f "$BASELINE"
 '''
         bash += f'python -m adaptive_vcm.evaluate {data_arguments} --config configs/v23_screen.json --checkpoint "$BASELINE" --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap} --ablate-learned --out "$OUT/guard_only"\n'
     if args.mode == "learned":
-        count = train_count if recipe in ('v25', 'v26', 'v27') else 512
+        count = train_count if recipe in ('v25', 'v26', 'v27', 'v28') else 512
         extras = f' --measurements {measurements}' if recipe in ('v25', 'v26', 'v27') else ''
-        steps_option = '' if recipe in ('v26', 'v27') else f' --steps {args.steps}'
+        if recipe=='v28':
+            extras=f' --epochs {epochs} --width {width}'
+        steps_option = '' if recipe in ('v26', 'v27', 'v28') else f' --steps {args.steps}'
         bash += f'python -m {trainer} {data_arguments}{config_option} --count {count}{steps_option}{extras} --seed {args.seed} --out "$OUT/train"\n'
         checkpoint = ' --checkpoint "$OUT/train/preprocessor_last.pth"'
-    ablation_option = " --ablate-learned" if recipe in ("v23", "v24", 'v25', 'v26', 'v27') and args.mode == "learned" else ""
+    ablation_option = " --ablate-learned" if recipe in ("v23", "v24", 'v25', 'v26', 'v27', 'v28') and args.mode == "learned" else ""
     bash += f'python -m adaptive_vcm.evaluate {data_arguments}{config_option} --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap}{checkpoint}{ablation_option} --out "$OUT/eval"\n'
     directory = args.directory or ROOT / "outputs/kaggle" / args.slug
     directory.mkdir(parents=True, exist_ok=True)
     # Stream the new recipe's subprocess output as it happens. %%bash buffers
     # the entire cell, which hid collection progress on the older long jobs.
     source = bash
-    if recipe in ('v26', 'v27'):
+    if recipe in ('v26', 'v27', 'v28'):
         command = bash.removeprefix('%%bash\n')
         source = ('import subprocess\n'
                   f'command = {command!r}\n'
@@ -135,11 +149,44 @@ test -f "$BASELINE"
     (directory / "notebook.ipynb").write_text(json.dumps(notebook, indent=2), encoding="utf-8")
     (directory / "kernel-metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     (directory / "job.json").write_text(json.dumps({"commit": args.commit, "task": args.task, "mode": args.mode, "recipe": recipe,
-                                                   "steps": None if recipe in ('v26', 'v27') else args.steps, "count": args.count, "bootstrap": args.bootstrap,
-                                                   "measurements": measurements if recipe in ('v25', 'v26', 'v27') else None,
-                                                   "train_count": train_count if recipe in ('v25', 'v26', 'v27') else None,
+                                                   "steps": None if recipe in ('v26', 'v27', 'v28') else args.steps, "count": args.count, "bootstrap": args.bootstrap,
+                                                   "measurements": measurements if recipe in ('v25', 'v26', 'v27', 'v28') else None,
+                                                   "train_count": train_count if recipe in ('v25', 'v26', 'v27', 'v28') else None,
+                                                   "epochs": epochs if recipe=='v28' else None,
+                                                   "width": width if recipe=='v28' else None,
                                                    "seed": args.seed, "handle": metadata["id"], "private": True}, indent=2), encoding="utf-8")
     print(json.dumps({"prepared": str(directory), "handle": metadata["id"], "commit": args.commit}))
+    return directory
+
+
+def prepare_joint(args):
+    """One GPU job executes the two independent V28 pilots sequentially."""
+    if getattr(args,'recipe',None)!='v28' or args.mode!='learned':
+        raise ValueError('joint jobs are registered for learned V28 only')
+    directory=args.directory or ROOT/'outputs/kaggle'/args.slug
+    notebooks=[]
+    for task in ('ar','od'):
+        values=vars(args).copy()
+        values.update(task=task,slug=f'{args.slug}-{task}',directory=directory/'task_payloads'/task)
+        task_directory=prepare(argparse.Namespace(**values))
+        notebook=json.loads((task_directory/'notebook.ipynb').read_text(encoding='utf-8'))
+        cell=notebook['cells'][0]
+        source=''.join(cell['source']).replace('REPO=/kaggle/working/adaptive_preprocessing',
+                                             f'REPO=/kaggle/working/adaptive_preprocessing_{task}')
+        cell['source']=source.splitlines(keepends=True)
+        notebooks.append(cell)
+    payload=json.loads((directory/'task_payloads/ar/notebook.ipynb').read_text(encoding='utf-8'))
+    payload['cells']=notebooks
+    metadata=json.loads((directory/'task_payloads/ar/kernel-metadata.json').read_text(encoding='utf-8'))
+    metadata.update(id=f'{args.account}/{args.slug}',title=args.slug,
+                    dataset_sources=['qktttttttttt/kineticscleaned','awsaf49/coco-2017-dataset'])
+    job=json.loads((directory/'task_payloads/ar/job.json').read_text(encoding='utf-8'))
+    job.update(task='both',handle=metadata['id'],sequential_tasks=['ar','od'],
+               measurements_per_task=job.pop('measurements'),
+               scope='Sequential independent AR/OD TRAIN and DEV, shared GPU job; child payloads are unsubmitted templates')
+    for filename,value in [('notebook.ipynb',payload),('kernel-metadata.json',metadata),('job.json',job)]:
+        (directory/filename).write_text(json.dumps(value,indent=2),encoding='utf-8')
+    print(json.dumps(dict(prepared=str(directory),handle=metadata['id'],commit=args.commit,task='both')))
     return directory
 
 
@@ -165,13 +212,15 @@ def main():
     parser.add_argument("--pool", type=Path, default=Path("D:/STUDY/LAB/pool.json"))
     parser.add_argument("--account", required=True)
     parser.add_argument("--slug")
-    parser.add_argument("--task", choices=["ar", "od"], default="ar")
+    parser.add_argument("--task", choices=["ar", "od", "both"], default="ar")
     parser.add_argument("--mode", choices=["analytic", "learned"], default="learned")
-    parser.add_argument("--recipe", choices=["v22", "v23", "v24", 'v25', 'v26', 'v27'], default="v22")
+    parser.add_argument("--recipe", choices=["v22", "v23", "v24", 'v25', 'v26', 'v27', 'v28'], default="v22")
     parser.add_argument("--commit")
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument('--measurements', type=int, default=512)
     parser.add_argument('--train-count', type=int, default=512)
+    parser.add_argument('--epochs',type=int,default=4)
+    parser.add_argument('--width',type=int,default=12)
     parser.add_argument("--count", type=int, default=128)
     parser.add_argument("--bootstrap", type=int, default=200)
     parser.add_argument("--seed", type=int, default=302001)

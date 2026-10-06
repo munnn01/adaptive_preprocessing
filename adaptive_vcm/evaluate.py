@@ -45,6 +45,10 @@ def code_manifest() -> dict:
 def choose_stream(clip, protection, task, codec, cfg, teachers, source_predictions, learned=None,
                   *, learned_mask=None, components=False):
     """Run encoder-only selection. There is no ground-truth or evaluator input."""
+    if getattr(learned, 'schema', None) == 'adaptive-vcm-motion-v7':
+        from .motion_selection import choose_motion_stream
+        return choose_motion_stream(clip,protection,task,codec,cfg,teachers,source_predictions,
+                                    learned,learned_mask=learned_mask,components=components)
     if getattr(learned, 'schema', None) in RANKING_SCHEMAS:
         if task != 'ar':
             raise ValueError('ranking recipe is registered for AR only')
@@ -201,7 +205,7 @@ def run(args) -> dict:
     learned = None
     if args.checkpoint:
         state = torch.load(args.checkpoint, map_location=device, weights_only=True)
-        if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema, *RANKING_SCHEMAS) and state.get("training_config") != cfg:
+        if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema, 'adaptive-vcm-motion-v7', *RANKING_SCHEMAS) and state.get("training_config") != cfg:
             raise ValueError("checkpoint/evaluation configuration mismatch")
         learned = load_preprocessor(state, args.task).to(device)
         learned.eval()
@@ -227,6 +231,11 @@ def run(args) -> dict:
                                       'bank_oracle is an audit-only upper bound; learned_raw is ungated')
         manifest['proposal_budget'] = cfg['rank_top_k']
         write_json(args.out / 'manifest.json', manifest)
+    if getattr(learned,'schema',None) == 'adaptive-vcm-motion-v7':
+        manifest['component_scope']='same controls; three neural proposals in primary; same-K TRAIN static and full profile oracle are audit arms'
+        manifest['proposal_budget']=3
+        manifest['motion_source']='RGB optical-flow proxy; no codec motion vectors'
+        write_json(args.out/'manifest.json',manifest)
     all_rows, geometry = {codec: [] for codec in args.codecs}, {}
     component_rows = {codec: [] for codec in args.codecs}
     for position, item in enumerate(plan):
@@ -240,14 +249,20 @@ def run(args) -> dict:
             semantic = np.maximum.reduce([normalize_map(teacher.saliency(clip)) for teacher in teachers])
             protection = action_protection(clip, semantic)
             learned_mask = semantic_protection(semantic) if (isinstance(learned, RateAwarePreprocessor)
-                           or getattr(learned, 'schema', None) in RANKING_SCHEMAS) else protection
+                           or getattr(learned, 'schema', None) in (*RANKING_SCHEMAS,'adaptive-vcm-motion-v7')) else protection
         else:
             source_predictions = [teachers[0].predict(clip)]
             source = source_predictions[0]
             protection = boxes_to_mask(*clip.shape[1:3], source["boxes"][source["scores"] >= cfg["od_score_threshold"]])
             learned_mask = protection
+        if getattr(learned,'schema',None) == 'adaptive-vcm-motion-v7':
+            from .motion_support import build_motion_support
+            learned_mask=build_motion_support(clip,learned_mask,args.task)
         preparation_seconds = time.perf_counter() - preparation_start
         source_hash = hashlib.sha256(clip.tobytes()).hexdigest()
+        if getattr(learned,'schema',None) == 'adaptive-vcm-motion-v7':
+            if source_hash in learned.train_source_sha256.values():
+                raise ValueError('TRAIN/evaluation source pixel overlap')
         for codec_name in args.codecs:
             for qp in cfg["qps"]:
                 start = time.perf_counter()
@@ -265,6 +280,7 @@ def run(args) -> dict:
                     row = {"id": item["id"], "qp": qp, "codec": codec_name, "arm": arm,
                            "candidate": candidate_name,
                            "source_sha256": source_hash, "coded_bytes": result.coded_bytes,
+                           "source_shape": list(clip.shape),
                            "bpp": reference_bpp(result.coded_bytes, clip.shape),
                            "stream_sha256": hashlib.sha256(result.data).hexdigest(),
                            "source_preparation_seconds": preparation_seconds, "selection_seconds": seconds}
@@ -332,6 +348,14 @@ def run(args) -> dict:
             if getattr(learned, 'schema', None) == 'adaptive-vcm-portfolio-v6':
                 decision['policy_fit']['proposal_origin_scope'] = 'per-point prior_only in selection audit; mixed low/high recipes'
                 decision['policy_fit']['recipes'] = learned.recipes
+    if getattr(learned,'schema',None) == 'adaptive-vcm-motion-v7':
+        from .motion_selection import motion_contribution
+        decision['policy_contribution']={c:motion_contribution(rows,component_rows[c]) for c,rows in all_rows.items()}
+        decision['proposal_budget']={'learned':3,'static':3,'profile_oracle':12,
+                                    'oracle_scope':'audit-only; primary uses original controls plus three neural pixel-map proposals'}
+        decision['policy_fit']={'scope':'TRAIN measured feasible pixel imitation, fixed final-LAST; no codec-gradient or DEV checkpoint selection',
+                                'motion_source':'RGB optical-flow proxy, not codec motion vectors',
+                                'geometry':'original frame coordinates; no crop metadata or decoder change'}
     write_json(args.out / "summary.json", decision)
     print(json.dumps(decision, indent=2, allow_nan=False), flush=True)
     return decision
