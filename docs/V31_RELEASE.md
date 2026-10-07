@@ -1,0 +1,15 @@
+# V31 release and evidence
+
+The approved V31 implementation uses Native execution after Tasks1-3 received independent task reviews. The remaining implementation uses Superpowers executing-plans/TDD and one fresh whole-branch review before publication. See [protocol](V31_PROTOCOL.md), [approved design](superpowers/specs/2026-10-07-v31-actions-design.md), and [implementation plan](superpowers/plans/2026-10-07-v31-actions.md).
+
+Implemented components include four-QP locked configuration/source partitions; 32-byte recipe transport and actual standard codecs; frozen spatial/temporal action bank; verified resumable observations; CAL-only teacher guards; exact COCO/PCHIP/paired bootstrap metrics; FIT-frozen static portfolios and TUNE oracle gates; supervised safety/rate selector training; live anchor+K3 selection; frozen DEV evaluation; oracle-first CLI; immutable Kaggle payloads/account registry/source-shard merge; and a separate matched GOP audit.
+
+This document describes the release procedure, not empirical performance results. Numerical fixtures and integration tests do not prove BD-rate savings. Do not claim the target below−10% for AR/OD and both codecs until full measured curves, common overlap, task-quality gaps and applicable paired CIs have been audited. Selector training is conditional on the below−15% action-oracle gate. Existing V29 and other experiments remain untouched.
+
+The authoritative Native execution evidence is retained outside Git under `D:/STUDY/LAB/bao_1/output/v31_research`: complete pytest logs, final review, exhaustive ledger rulings and final release/mirror manifests. The live experiment registry is `D:/STUDY/LAB/bao_1/output/adaptive_v31_jobs/run_registry.json`. Inspect actual status/runtime/startup/source-count evidence there; a push receipt alone does not establish a running job.
+
+Release validation runs the full inherited+V31 pytest suite, compileall and diff checks, followed by the fresh branch review. Material findings require a reproducing failing regression, correction and full green suite. The final branch is pushed as `v31-actions` to the authorized repository and cloned to `D:/STUDY/LAB/hope/v31`; every tracked LF-normalized digest and code/config manifest must match the same full commit.
+
+The first empirical submission is AR oracle for A/B/C, sharing one B-union grid. It starts with four-source cost measurements. If necessary, additional pool accounts measure disjoint whole-source shards, then complete artifacts are merged for centralized CAL/oracle. OD oracle follows the integrity-audited AR oracle. Only validated eligible task/arm gates may submit training/frozen DEV with pinned resume dataset versions. Primary exploratory counts remain AR DEV128 and OD DEV100; TEST is not submitted.
+
+Final status and any ongoing GPU work are reported explicitly. The ledger is archived before its plan-specific scratch directory is cleaned; unrelated workspaces and user files are preserved. No new design approval is needed for these already authorized steps.
