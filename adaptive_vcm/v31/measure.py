@@ -343,12 +343,18 @@ def collect(plans, cfg, store, models):
         return {'expected': expected, 'rows': rows, 'manifest': read_json(store / 'complete.json')}
     scoped_models = _ScopedModels(models)
     rows = []
+    import time
+    progress_start = time.perf_counter()
     for sample in samples:
         for codec in CODECS:
             for qp in QPS:
                 rows.append(measure_source(sample, registry, codec, qp, scoped_models, effective, store))
         scoped_models.observations.clear()
         scoped_models.rendered.clear()
+        print('[v31-measure] ' + json.dumps({'task':task,'source_id':sample['id'],
+              'sources_complete':len(rows)//8,'sources_expected':len(samples),
+              'conditions_complete':len(rows),'elapsed_seconds':time.perf_counter()-progress_start},
+              sort_keys=True,allow_nan=False),flush=True)
     assert_complete(rows, expected)
     entries = []
     for row in rows:
