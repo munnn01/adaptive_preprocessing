@@ -171,6 +171,24 @@ def _metadata(sample):
     return result
 
 
+def prepare_support(rgb, task, source_teacher, teacher_models, cache, score_threshold):
+    """Shared label-free source support for measurements and live selection."""
+    if task == 'ar':
+        semantic = np.maximum.reduce([normalize_map(cache.saliency(model, rgb))
+                                     for model in teacher_models.values()])
+        controls = action_protection(rgb, semantic)
+        learned = semantic_protection(semantic)
+    elif task == 'od':
+        teacher = source_teacher['mobilenet']['canonical']
+        scores, boxes = np.asarray(teacher['scores']), np.asarray(teacher['boxes']).reshape(-1, 4)
+        selected = boxes[scores >= score_threshold]
+        controls = boxes_to_mask(*rgb.shape[1:3], selected)
+        learned = controls if len(selected) else np.ones(rgb.shape[1:3], np.float32)
+    else:
+        raise ValueError('invalid support task')
+    return controls, build_motion_support(rgb, learned, task)
+
+
 def measure_source(sample, registry, codec_name, qp, models, cfg, store):
     """One complete condition; resume only exact source/config/model identity.
 
@@ -207,17 +225,8 @@ def measure_source(sample, registry, codec_name, qp, models, cfg, store):
                  'source_predictions': source_predictions, 'model_hashes': hashes,
                  'config_hash': identity['config_hash'], 'qualification_error': sample.get('timing_error') or 'unknown_source_duration'})
             raise ValueError('AR stage timing unavailable: known constant rational source FPS/duration required; source diagnostic only')
-        semantic = np.maximum.reduce([normalize_map(cache.saliency(model, rgb))
-                                     for model in models[task]['teachers'].values()])
-        controls = action_protection(rgb, semantic)
-        learned = semantic_protection(semantic)
-    else:
-        teacher = source_predictions['teachers'][effective['od_teacher']]['canonical']
-        scores, boxes = np.asarray(teacher['scores']), np.asarray(teacher['boxes']).reshape(-1, 4)
-        selected = boxes[scores >= effective['od_score_threshold']]
-        controls = boxes_to_mask(*rgb.shape[1:3], selected)
-        learned = controls if len(selected) else np.ones(rgb.shape[1:3], np.float32)
-    support = build_motion_support(rgb, learned, task)
+    controls, support = prepare_support(rgb, task, source_predictions['teachers'],
+                                       models[task]['teachers'], cache, effective['od_score_threshold'])
     support_hash = canonical_hash({key: sha(np.asarray(support[key]).tobytes()) for key in ('protection', 'motion', 'cuts')})
     source_artifact = write_source_artifact(store, rgb, controls, support)
     conditioned = {**sample, 'codec': codec_name, 'control_protection': controls}

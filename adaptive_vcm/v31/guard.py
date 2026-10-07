@@ -210,6 +210,8 @@ def fit_policy(cal_rows, task, cfg):
               'cal_code_manifest_hash': rows[0].get('code_manifest_hash') if rows else None,
               'cal_measurement_config_hash': rows[0].get('config_hash') if rows else None,
               'cal_source_ids': sorted({row['source_id'] for row in rows}),
+              'cal_source_pixels_sha256': {row['source_id']: row['source']['source_sha256'] for row in rows
+                                          if row.get('source', {}).get('source_sha256')},
               'cal_pixels_sha256': sorted({row.get('source', {}).get('source_sha256') for row in rows
                                           if row.get('source', {}).get('source_sha256')}),
               'strict_config': {key: cfg[key] for key in ('ar_confidence', 'ar_require_anchor_decision', 'od_score_threshold')},

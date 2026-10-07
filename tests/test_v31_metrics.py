@@ -150,6 +150,14 @@ def test_coco_empty_predictions_and_native_pixel_rate():
     assert g.curves(rows,'od','anchor','h264')['rate'][0] == pytest.approx(300*8/1200)
 
 
+def test_coco_cache_identity_is_portable_canonical_json():
+    from adaptive_vcm.v31.protocol import canonical_hash
+    g = mod()
+    preds,annotations = coco_fixture()
+    identity = g.COCOMatchCache(preds,annotations).identity
+    assert len(canonical_hash(identity))==64
+
+
 def test_metrics_fail_on_missing_block_changed_source_or_bad_choice():
     g = mod()
     rows = ar_rows()

@@ -96,7 +96,7 @@ class COCOMatchCache:
             ev.params.areaRngLbl = ['all']
             ev.params.maxDets = [100]
             ev.evaluate()
-        self.categories = list(ev.params.catIds)
+        self.categories = [int(category) for category in ev.params.catIds]
         self.recall_thresholds = ev.params.recThrs.copy()
         self.records = {(self.categories[k],image_id): ev.evalImgs[k*len(ids)+i]
                         for k in range(len(self.categories)) for i,image_id in enumerate(ids)}

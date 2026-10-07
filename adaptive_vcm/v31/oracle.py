@@ -165,6 +165,10 @@ def _integrity(fit_rows,tune_rows,policy,registry,task,cfg):
     counts = SOURCE_COUNTS[task]
     info = {'fit_sources':len(sets[0]),'cal_sources':len(policy.get('cal_source_ids',[])),
             'tune_sources':len(sets[1]),'fit_conditions':len(fit_rows),'tune_conditions':len(tune_rows)}
+    info['source_partitions'] = {'fit':sorted(sets[0]),'cal':policy.get('cal_source_ids',[]),'tune':sorted(sets[1])}
+    info['source_pixels_sha256'] = {'fit':{row['source_id']:row.get('source',{}).get('source_sha256') for row in fit_rows},
+                                  'cal':policy.get('cal_source_pixels_sha256',{}),
+                                  'tune':{row['source_id']:row.get('source',{}).get('source_sha256') for row in tune_rows}}
     if any(info[key] != expected for key,expected in [('fit_sources',counts['fit']),('cal_sources',counts['cal']),
             ('tune_sources',counts['tune']),('fit_conditions',counts['fit']*8),('tune_conditions',counts['tune']*8)]):
         reasons.append('source/condition count differs from full frozen protocol')

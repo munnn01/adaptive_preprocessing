@@ -193,6 +193,8 @@ def fit_selector(fit_rows,gate,policy,cfg,out):
                 'epochs':cfg['epochs'],'training_source_ids':sorted({row['source_id'] for row in rows}),
                 'training_conditions':len(rows),'seed':cfg['seed'],'optimizer':cfg['optimizer'],
                 'history':history,'loss':{'safety_bce':1.,'feasible_smooth_l1':2.,'beta':.1,'pairwise_utility':.25}}
+    metadata.update(source_partitions=gate['integrity']['source_partitions'],
+                    source_pixels_sha256=gate['integrity']['source_pixels_sha256'])
     payload = make_checkpoint(model,metadata)
     buffer = io.BytesIO(); torch.save(payload,buffer)
     data = buffer.getvalue()
