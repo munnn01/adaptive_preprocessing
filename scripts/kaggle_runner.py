@@ -82,7 +82,7 @@ test -n "$ANN" && test -n "$IMAGES"
         data_arguments = '--task od --root "$IMAGES" --annotations "$ANN"'
     checkpoint = ""
     recipe = getattr(args, "recipe", "v22")
-    if recipe not in ("v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29"):
+    if recipe not in ("v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30"):
         raise ValueError("unsupported recipe")
     if recipe == "v24" and (args.task != "ar" or args.mode != "learned"):
         raise ValueError("V24 recipe is registered for learned AR only")
@@ -99,17 +99,22 @@ test -n "$ANN" && test -n "$IMAGES"
     variant = getattr(args, 'variant', None)
     if recipe == 'v29' and variant not in ('a', 'b', 'c'):
         raise ValueError('V29 requires a declared a/b/c variant')
-    if recipe in ('v28', 'v29'):
+    if recipe == 'v30' and variant not in ('a', 'b', 'c'):
+        raise ValueError('V30 requires a declared a/b/c variant')
+    if recipe in ('v28', 'v29', 'v30'):
         if (args.mode!='learned' or type(train_count) is not int or train_count<2
                 or measurements!=train_count*10 or type(epochs) is not int or epochs<1
                 or type(width) is not int or width<4):
+            if recipe == 'v30':
+                raise ValueError('V30 requires a learned recipe, complete TRAIN codec/QP grid and valid epochs/width')
             raise ValueError('V28 requires a learned recipe, complete TRAIN codec/QP grid and valid epochs/width')
-    config_name = f'v29_{variant}' if recipe == 'v29' else recipe
+    config_name = f'{recipe}_{variant}' if recipe in ('v29', 'v30') else recipe
     config_option = f" --config configs/{config_name}_screen.json" if recipe != "v22" else ""
     trainer = {"v22": "adaptive_vcm.train", "v23": "adaptive_vcm.train_rateaware",
                "v24": "adaptive_vcm.train_profiles", 'v25': 'adaptive_vcm.train_ranking',
                'v26': 'adaptive_vcm.train_utility', 'v27': 'adaptive_vcm.train_portfolio',
-               'v28': 'adaptive_vcm.train_motion', 'v29': 'adaptive_vcm.train_motion'}[recipe]
+               'v28': 'adaptive_vcm.train_motion', 'v29': 'adaptive_vcm.train_motion',
+               'v30': 'adaptive_vcm.train_motion'}[recipe]
     if recipe == "v24":
         # Paired guard-only control: exact V23 final checkpoint, unchanged config,
         # current corrected guard. Never train from or select a model on DEV.
@@ -118,21 +123,21 @@ test -f "$BASELINE"
 '''
         bash += f'python -m adaptive_vcm.evaluate {data_arguments} --config configs/v23_screen.json --checkpoint "$BASELINE" --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap} --ablate-learned --out "$OUT/guard_only"\n'
     if args.mode == "learned":
-        count = train_count if recipe in ('v25', 'v26', 'v27', 'v28', 'v29') else 512
+        count = train_count if recipe in ('v25', 'v26', 'v27', 'v28', 'v29', 'v30') else 512
         extras = f' --measurements {measurements}' if recipe in ('v25', 'v26', 'v27') else ''
-        if recipe in ('v28', 'v29'):
+        if recipe in ('v28', 'v29', 'v30'):
             extras=f' --epochs {epochs} --width {width}'
-        steps_option = '' if recipe in ('v26', 'v27', 'v28', 'v29') else f' --steps {args.steps}'
+        steps_option = '' if recipe in ('v26', 'v27', 'v28', 'v29', 'v30') else f' --steps {args.steps}'
         bash += f'python -m {trainer} {data_arguments}{config_option} --count {count}{steps_option}{extras} --seed {args.seed} --out "$OUT/train"\n'
         checkpoint = ' --checkpoint "$OUT/train/preprocessor_last.pth"'
-    ablation_option = " --ablate-learned" if recipe in ("v23", "v24", 'v25', 'v26', 'v27', 'v28', 'v29') and args.mode == "learned" else ""
+    ablation_option = " --ablate-learned" if recipe in ("v23", "v24", 'v25', 'v26', 'v27', 'v28', 'v29', 'v30') and args.mode == "learned" else ""
     bash += f'python -m adaptive_vcm.evaluate {data_arguments}{config_option} --count {args.count} --split dev --codecs h264 h265 --bootstrap {args.bootstrap}{checkpoint}{ablation_option} --out "$OUT/eval"\n'
     directory = args.directory or ROOT / "outputs/kaggle" / args.slug
     directory.mkdir(parents=True, exist_ok=True)
     # Stream the new recipe's subprocess output as it happens. %%bash buffers
     # the entire cell, which hid collection progress on the older long jobs.
     source = bash
-    if recipe in ('v26', 'v27', 'v28', 'v29'):
+    if recipe in ('v26', 'v27', 'v28', 'v29', 'v30'):
         command = bash.removeprefix('%%bash\n')
         source = ('import subprocess\n'
                   f'command = {command!r}\n'
@@ -153,12 +158,12 @@ test -f "$BASELINE"
     (directory / "notebook.ipynb").write_text(json.dumps(notebook, indent=2), encoding="utf-8")
     (directory / "kernel-metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     (directory / "job.json").write_text(json.dumps({"commit": args.commit, "task": args.task, "mode": args.mode, "recipe": recipe,
-                                                   "steps": None if recipe in ('v26', 'v27', 'v28', 'v29') else args.steps, "count": args.count, "bootstrap": args.bootstrap,
-                                                   "measurements": measurements if recipe in ('v25', 'v26', 'v27', 'v28', 'v29') else None,
-                                                   "train_count": train_count if recipe in ('v25', 'v26', 'v27', 'v28', 'v29') else None,
-                                                   "epochs": epochs if recipe in ('v28', 'v29') else None,
-                                                   "width": width if recipe in ('v28', 'v29') else None,
-                                                   "variant": variant if recipe=='v29' else None,
+                                                   "steps": None if recipe in ('v26', 'v27', 'v28', 'v29', 'v30') else args.steps, "count": args.count, "bootstrap": args.bootstrap,
+                                                   "measurements": measurements if recipe in ('v25', 'v26', 'v27', 'v28', 'v29', 'v30') else None,
+                                                   "train_count": train_count if recipe in ('v25', 'v26', 'v27', 'v28', 'v29', 'v30') else None,
+                                                   "epochs": epochs if recipe in ('v28', 'v29', 'v30') else None,
+                                                   "width": width if recipe in ('v28', 'v29', 'v30') else None,
+                                                   "variant": variant if recipe in ('v29', 'v30') else None,
                                                    "seed": args.seed, "handle": metadata["id"], "private": True}, indent=2), encoding="utf-8")
     print(json.dumps({"prepared": str(directory), "handle": metadata["id"], "commit": args.commit}))
     return directory
@@ -166,8 +171,8 @@ test -f "$BASELINE"
 
 def prepare_joint(args):
     """One GPU job executes independent AR/OD development screens sequentially."""
-    if getattr(args,'recipe',None) not in ('v28', 'v29') or args.mode!='learned':
-        raise ValueError('joint jobs are registered for learned V28/V29 only')
+    if getattr(args,'recipe',None) not in ('v28', 'v29', 'v30') or args.mode!='learned':
+        raise ValueError('joint jobs are registered for learned V28/V29/V30 only')
     directory=args.directory or ROOT/'outputs/kaggle'/args.slug
     notebooks=[]
     for task in ('ar','od'):
@@ -219,7 +224,7 @@ def main():
     parser.add_argument("--slug")
     parser.add_argument("--task", choices=["ar", "od", "both"], default="ar")
     parser.add_argument("--mode", choices=["analytic", "learned"], default="learned")
-    parser.add_argument("--recipe", choices=["v22", "v23", "v24", 'v25', 'v26', 'v27', 'v28', 'v29'], default="v22")
+    parser.add_argument("--recipe", choices=["v22", "v23", "v24", 'v25', 'v26', 'v27', 'v28', 'v29', 'v30'], default="v22")
     parser.add_argument('--variant', choices=['a', 'b', 'c'])
     parser.add_argument("--commit")
     parser.add_argument("--steps", type=int, default=1000)
@@ -233,14 +238,14 @@ def main():
     parser.add_argument("--directory", type=Path)
     args = parser.parse_args()
     defaults = ({'train_count': 32, 'count': 32, 'epochs': 8,
-                 'bootstrap': 2000, 'seed': 302901} if args.recipe == 'v29' else
+                 'bootstrap': 2000, 'seed': 302901} if args.recipe in ('v29', 'v30') else
                 {'train_count': 512, 'count': 128, 'epochs': 4,
                  'bootstrap': 200, 'seed': 302001})
     for name, value in defaults.items():
         if getattr(args, name) is None:
             setattr(args, name, value)
     if args.measurements is None:
-        args.measurements = args.train_count * 10 if args.recipe == 'v29' else 512
+        args.measurements = args.train_count * 10 if args.recipe in ('v29', 'v30') else 512
     if args.action != "list" and not args.slug:
         parser.error("--slug is required")
     if args.action == "prepare":

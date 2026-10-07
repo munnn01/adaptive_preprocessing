@@ -24,7 +24,7 @@ from .profiles import ProfilePreprocessor
 
 ROOT = Path(__file__).resolve().parents[1]
 RANKING_SCHEMAS = ('adaptive-vcm-ranking-v4', 'adaptive-vcm-utility-v5', 'adaptive-vcm-portfolio-v6')
-SPATIAL_SCHEMAS = ('adaptive-vcm-motion-v7', 'adaptive-vcm-semantic-v8')
+SPATIAL_SCHEMAS = ('adaptive-vcm-motion-v7', 'adaptive-vcm-semantic-v8', 'adaptive-vcm-conditional-v9')
 
 
 def write_json(path: Path, value) -> None:
@@ -189,7 +189,9 @@ def run(args) -> dict:
         if not args.checkpoint:
             raise ValueError('V28 requires a trained motion checkpoint')
         early_state = torch.load(args.checkpoint, map_location='cpu', weights_only=True)
-        expected_schema = 'adaptive-vcm-semantic-v8' if cfg.get('v29_variant') is not None else 'adaptive-vcm-motion-v7'
+        expected_schema = ('adaptive-vcm-conditional-v9' if cfg.get('v30_variant') is not None else
+                           'adaptive-vcm-semantic-v8' if cfg.get('v29_variant') is not None else
+                           'adaptive-vcm-motion-v7')
         if not isinstance(early_state, dict) or early_state.get('schema') != expected_schema:
             raise ValueError('V28/V29 requires a matching trained spatial checkpoint')
         if early_state.get('training_config') != cfg:
@@ -250,6 +252,10 @@ def run(args) -> dict:
         if cfg.get('v29_variant'):
             manifest['semantic_variant']=cfg['v29_variant']
             manifest['admission_policy']=getattr(learned,'admission_policy',None)
+        if cfg.get('v30_variant'):
+            manifest.update(conditional_variant=cfg['v30_variant'],
+                profile_registry=learned.profile_registry,baseline_static_orders=learned.baseline_static_orders,
+                gate_threshold=.5,model_parameters=sum(p.numel() for p in learned.parameters()))
         write_json(args.out/'manifest.json',manifest)
     all_rows, geometry = {codec: [] for codec in args.codecs}, {}
     component_rows = {codec: [] for codec in args.codecs}
@@ -376,6 +382,16 @@ def run(args) -> dict:
                 objective='direct profile expert/alpha supervision and editable RGB imitation with capped measured extra-byte utility',
                 admission_policy=getattr(learned,'admission_policy',None),
                 calibration_scope='C uses disjoint TRAIN sources; policy_unrestricted is the same checkpoint without extra admission')
+        if cfg.get('v30_variant'):
+            decision['proposal_budget'].update(profile_oracle=len(learned.profile_registry),baseline_oracle=12,
+                oracle_scope='audit-only; primary uses original controls plus exactly three conditional neural proposals')
+            decision['policy_fit'].update(variant=cfg['v30_variant'],gate_threshold=.5,
+                objective='balanced admission and positive-only canonical expert/strength supervision with editable RGB and capped actual byte utility',
+                parameter_scope='source-level full clip/image pooled features; offline encoder context',
+                baseline_scope='A/B reuse freshly measured baseline profiles; C additionally measures original V29-A pixels; TRAIN static K3 and DEV oracle audit')
+            from .motion_selection import conditional_selection_diagnostics
+            audit_records=[json.loads(line) for line in (args.out/'selection_audit.jsonl').read_text().splitlines()]
+            decision['conditional_diagnostics']=conditional_selection_diagnostics(audit_records,cfg,args.task)
     write_json(args.out / "summary.json", decision)
     print(json.dumps(decision, indent=2, allow_nan=False), flush=True)
     return decision

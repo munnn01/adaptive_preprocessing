@@ -134,7 +134,7 @@ class RateAwarePreprocessor(nn.Module):
 
 def load_preprocessor(state, task):
     from .profiles import ProfilePreprocessor
-    if state.get('schema') in ('adaptive-vcm-motion-v7', 'adaptive-vcm-semantic-v8'):
+    if state.get('schema') in ('adaptive-vcm-motion-v7', 'adaptive-vcm-semantic-v8', 'adaptive-vcm-conditional-v9'):
         from .motion_selection import load_motion_preprocessor
         return load_motion_preprocessor(state, task)
     utility = state.get('schema') == 'adaptive-vcm-utility-v5'

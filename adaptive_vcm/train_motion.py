@@ -75,6 +75,69 @@ def semantic_loss(output, target, aux, protection, row, group_weight):
     return group_weight * utility * (rgb + .05 * alpha + .01 * expert), parts
 
 
+def conditional_loss(output, target, aux, protection, row, group_weight, variant):
+    """V30: admission on every row; measured action supervision on positives."""
+    from .conditional_learned import canonical_target
+    expected = canonical_target(row['target_profile'], variant)
+    if row.get('target_parameters') != expected:
+        raise ValueError('missing or inconsistent canonical target parameters')
+    positive = expected['admission']
+    editable = 1 - protection
+    denominator = editable.sum().clamp_min(1e-8)
+    rgb = ((output - target).square() * editable).sum() / (3 * denominator)
+    strength, weights = aux['strength'], aux['expert_weights'].clamp_min(1e-8)
+    gate_target = torch.full_like(aux['gate_logit'], float(positive))
+    gate = F.binary_cross_entropy_with_logits(aux['gate_logit'], gate_target)
+    alpha = output.sum() * 0
+    expert = output.sum() * 0
+    target_entropy = output.new_zeros(())
+    if positive:
+        alpha = (strength - expected['strength']).square().mean()
+        desired = output.new_tensor(expected['expert_weights']).reshape(1,4,1,1,1)
+        expert = -(desired * weights.log()).sum(1).mean()
+        target_entropy = -(desired * desired.clamp_min(1e-8).log()).sum(1).mean()
+    control, marginal = row['controls_coded_bytes'], row['marginal_saved_bytes']
+    if (type(control) is not int or control <= 0 or type(marginal) is not int or marginal < 0
+            or (positive and marginal <= 0) or (not positive and marginal != 0)):
+        raise ValueError('invalid actual byte utility for conditional target')
+    utility = 1 + min(1., 10 * marginal / control)
+    entropy = -(weights * weights.log()).sum(1).mean()
+    top = weights.topk(2, dim=1).values
+    parts = dict(rgb_loss=rgb, alpha_loss=alpha, expert_loss=expert, gate_loss=gate,
+        expert_kl=expert-target_entropy, target_entropy=target_entropy,
+        utility_weight=output.new_tensor(utility),
+        alpha_mean=(aux['alpha'] * editable).sum()/denominator,
+        raw_alpha_mean=strength.mean(), gate_probability=aux['gate_probability'].mean(),
+        expert_entropy=entropy, expert_margin=(top[:,0]-top[:,1]).mean())
+    return group_weight * utility * (rgb + .05*alpha + .01*expert + .05*gate), parts
+
+
+def conditional_bank_summary(records, baseline_names):
+    """Actual feasible headroom, independently of model selection counts."""
+    output = {}
+    for codec, qp in sorted({(r['codec'],r['qp']) for r in records}):
+        rows = [r for r in records if (r['codec'],r['qp'])==(codec,qp)]
+        baseline_positive = positive = baseline_margin = margin = 0
+        for row in rows:
+            def saved(actions):
+                feasible = [a['coded_bytes'] for a in actions if _eligible(a,
+                    row['anchor_coded_bytes'],row['slack'],row['min_savings'],
+                    2 if row['task']=='ar' else 1)]
+                return max(0,row['controls_coded_bytes']-min(feasible)) if feasible else 0
+            old = saved(row.get('baseline_profiles',
+                [a for a in row['profiles'] if a['name'] in baseline_names]))
+            new = saved(row['profiles'])
+            baseline_positive += old > 0
+            positive += new > 0
+            baseline_margin += old
+            margin += new
+        output[f'{codec}/{qp}'] = dict(points=len(rows),
+            baseline_positive_targets=baseline_positive,positive_targets=positive,
+            baseline_marginal_saved_bytes=baseline_margin,marginal_saved_bytes=margin,
+            extra_bank_saved_bytes=margin-baseline_margin)
+    return output
+
+
 def calibration_split(train_ids, seed):
     """Reserve a deterministic source-level quarter, independent of plan order."""
     if len(train_ids) < 2 or len(set(train_ids)) != len(train_ids):
@@ -176,7 +239,7 @@ def fit_static_orders(records, profile_names, k=3):
     return orders
 
 
-def validate_training_records(records, train_ids, task, profile_names):
+def validate_training_records(records, train_ids, task, profile_names, conditional_variant=None):
     """Check actual TRAIN provenance and the complete source/codec/QP matrix."""
     if task not in ('ar', 'od') or not train_ids or any(type(i) is not str for i in train_ids):
         raise ValueError('invalid TRAIN source identities or task')
@@ -215,6 +278,19 @@ def validate_training_records(records, train_ids, task, profile_names):
         if (row.get('target_profile') != target or row.get('target_coded_bytes') != target_bytes
                 or row.get('marginal_saved_bytes') != marginal):
             raise ValueError('inconsistent TRAIN target choice or bytes')
+        if conditional_variant is not None:
+            from .conditional_learned import canonical_target,profile_registry
+            from .motion_learned import PROFILE_NAMES
+            if names != [p['name'] for p in profile_registry(conditional_variant)]:
+                raise ValueError('inconsistent conditional TRAIN registry')
+            if row.get('target_parameters') != canonical_target(target,conditional_variant):
+                raise ValueError('inconsistent canonical TRAIN target parameters')
+            baseline = row.get('baseline_profiles',[])
+            if ([a.get('name') for a in baseline] != list(PROFILE_NAMES)
+                    or any(type(a.get('coded_bytes')) is not int or a['coded_bytes']<=0
+                        or len(a.get('distances',[]))!=teacher_count
+                        or len(a.get('decisions',[]))!=teacher_count for a in baseline)):
+                raise ValueError('incomplete actual baseline TRAIN measurements')
 
 
 def _sha(data):
@@ -263,6 +339,10 @@ def _validate_config(cfg):
     variant = cfg.get('v29_variant')
     if variant is not None and (variant not in ('a', 'b', 'c') or cfg.get('experiment') != f'v29-{variant}'):
         raise ValueError('invalid V29 variant or experiment')
+    conditional_variant = cfg.get('v30_variant')
+    if conditional_variant is not None and (variant is not None or conditional_variant not in ('a','b','c')
+            or cfg.get('experiment') != f'v30-{conditional_variant}'):
+        raise ValueError('invalid V30 variant or experiment')
 
 
 def _predict(teachers, clip, task):
@@ -284,13 +364,20 @@ def _measure_group(clip, support, protection, task, codec_name, qp, cfg, teacher
     codec = StandardCodec(codec_name, qp, cfg['preset'], cfg['fps'])
     controls = make_candidates(clip, protection, task, qp, cfg[f'{task}_candidates'])
     variant = cfg.get('v29_variant')
-    profiles = (profile_candidates(clip, support, task, qp) if variant is None else
-                profile_candidates(clip, support, task, qp, variant=variant))
+    renderer_variant = cfg.get('v30_variant',variant)
+    profiles = (profile_candidates(clip, support, task, qp) if renderer_variant is None else
+                profile_candidates(clip, support, task, qp, variant=renderer_variant))
     if [c.name for c in profiles] != list(profile_names):
         raise ValueError('profile registry changed during TRAIN collection')
     if not foreground_known:
         controls = [Candidate(c.name, clip) for c in controls]
         profiles = [Candidate(c.name, clip) for c in profiles]
+    baseline_profiles = []
+    if cfg.get('v30_variant') == 'c':
+        from .motion_learned import profile_candidates as original_profiles
+        baseline_profiles = original_profiles(clip,support,task,qp,variant='a')
+        if not foreground_known:
+            baseline_profiles = [Candidate(c.name,clip) for c in baseline_profiles]
     anchor = codec.roundtrip(clip)
     anchor_predictions = _predict(teachers, anchor.decoded, task)
     # Equal source pixels are deterministic codec inputs. Streams and decoded
@@ -322,11 +409,12 @@ def _measure_group(clip, support, protection, task, codec_name, qp, cfg, teacher
         action['eligible'] = _eligible(action, anchor.coded_bytes, slack, cfg['min_savings'], len(teachers))
         return action
     measured_controls, measured_profiles = [measure(c) for c in controls], [measure(c) for c in profiles]
+    measured_baseline = [measure(c) for c in baseline_profiles]
     winner = _control_winner(measured_controls, slack, cfg['min_savings'])
     target = choose_training_target(measured_controls, measured_profiles, slack=slack, min_savings=cfg['min_savings'])
     target_pixels = clip if target == 'identity' else next(c.clip for c in profiles if c.name == target)
     target_measurement = measured_controls[0] if target == 'identity' else next(a for a in measured_profiles if a['name'] == target)
-    return dict(controls=measured_controls, profiles=measured_profiles,
+    result = dict(controls=measured_controls, profiles=measured_profiles,
                 anchor_coded_bytes=int(anchor.coded_bytes), anchor_decoded_sha256=_sha(anchor.decoded.tobytes()),
                 actual_anchor_bpp=reference_bpp(anchor.coded_bytes, clip.shape),
                 controls_selected=measured_controls[winner]['name'],
@@ -335,7 +423,18 @@ def _measure_group(clip, support, protection, task, codec_name, qp, cfg, teacher
                 target_coded_bytes=target_measurement['coded_bytes'],
                 marginal_saved_bytes=(measured_controls[winner]['coded_bytes'] - target_measurement['coded_bytes']
                                       if target != 'identity' else 0),
-                slack=slack, min_savings=cfg['min_savings'], foreground_known=foreground_known), target_pixels
+                slack=slack, min_savings=cfg['min_savings'], foreground_known=foreground_known)
+    if cfg.get('v30_variant'):
+        from .conditional_learned import canonical_target
+        from .motion_learned import PROFILE_NAMES as baseline_names
+        result.update(target_parameters=canonical_target(target,cfg['v30_variant']),
+            baseline_profiles=measured_baseline if baseline_profiles else
+                [a for a in measured_profiles if a['name'] in baseline_names],
+            distinct_codec_encodes=len(pixel_cache),distinct_decoded_teacher_sets=len(prediction_cache),
+            distinct_teacher_evaluations=len(prediction_cache)*len(teachers),
+            candidate_measurement_slots=len(controls)+len(profiles)+len(baseline_profiles),
+            actual_probe_codec_seconds=sum(stream.seconds for stream in pixel_cache.values()))
+    return result,target_pixels
 
 
 def _fit(args, records, device):
@@ -343,9 +442,16 @@ def _fit(args, records, device):
     # Teacher construction and collection must not change initialization.
     torch.manual_seed(args.seed)
     variant = getattr(args, 'variant', None)
-    model = (MotionAwarePreprocessor(args.width, args.task) if variant is None else
-             MotionAwarePreprocessor(args.width, args.task, variant=variant)).to(device).train()
-    group_weights = semantic_group_weights(records) if variant is not None else None
+    conditional_variant = getattr(args,'conditional_variant',None)
+    if conditional_variant is not None:
+        from .conditional_learned import ConditionalPreprocessor
+        model = ConditionalPreprocessor(args.width,args.task,variant=conditional_variant)
+    else:
+        model = (MotionAwarePreprocessor(args.width,args.task) if variant is None else
+                 MotionAwarePreprocessor(args.width,args.task,variant=variant))
+    model = model.to(device).train()
+    conditioned = variant is not None or conditional_variant is not None
+    group_weights = semantic_group_weights(records) if conditioned else None
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     rng = np.random.default_rng(args.seed)
     steps, gradient_total, edited_total, epoch_logs = 0, 0., 0, []
@@ -368,7 +474,7 @@ def _fit(args, records, device):
                 with np.load(args.out / row['target_cache'], allow_pickle=False) as cache:
                     target = torch.from_numpy(cache['target'].copy()).to(source).permute(3, 0, 1, 2)[None] / 255
             semantic_parts = None
-            if variant is None:
+            if not conditioned:
                 output = model(source, source.new_tensor([row['qp']]),
                                source.new_tensor([int(row['codec'] == 'h265')]), protection,
                                motion=motion, cuts=cuts)
@@ -379,15 +485,23 @@ def _fit(args, records, device):
                                     source.new_tensor([int(row['codec'] == 'h265')]), protection,
                                     motion=motion, cuts=cuts, return_aux=True)
                 weight = 1.
-                loss, semantic_parts = semantic_loss(output, target, aux, protection, row,
-                                                      group_weights[int(index)])
+                if conditional_variant is not None:
+                    loss,semantic_parts = conditional_loss(output,target,aux,protection,row,
+                        group_weights[int(index)],conditional_variant)
+                else:
+                    loss, semantic_parts = semantic_loss(output,target,aux,protection,row,
+                        group_weights[int(index)])
             if not torch.isfinite(loss):
                 raise RuntimeError('nonfinite RGB imitation objective')
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1., error_if_nonfinite=True)
             head_gradients = None
-            if variant is not None:
+            if conditional_variant is not None:
+                head_gradients = dict(alpha_gradient_norm=float(model.strength_head.weight.grad.norm()),
+                    expert_gradient_norm=float(model.expert_head.weight.grad.norm()),
+                    gate_gradient_norm=float(model.gate_head.weight.grad.norm()))
+            elif variant is not None:
                 head = model.head.weight.grad
                 head_gradients = dict(alpha_gradient_norm=float(head[:1].norm()),
                                       expert_gradient_norm=float(head[1:].norm()))
@@ -414,16 +528,17 @@ def _fit(args, records, device):
                            **{key: float(value.detach()) for key, value in semantic_parts.items()},
                            **head_gradients)
                 kind = 'positive' if row['target_profile'] != 'identity' else 'identity'
-                class_diagnostics[kind].append({k: log[k] for k in
-                    ('loss', 'rgb_loss', 'alpha_loss', 'expert_loss', 'alpha_mean', 'raw_alpha_mean',
-                     'expert_entropy', 'expert_margin', 'gradient_norm', 'alpha_gradient_norm',
-                     'expert_gradient_norm')})
+                diagnostic_keys = ['loss','rgb_loss','alpha_loss','expert_loss','alpha_mean','raw_alpha_mean',
+                    'expert_entropy','expert_margin','gradient_norm','alpha_gradient_norm','expert_gradient_norm']
+                if conditional_variant is not None:
+                    diagnostic_keys += ['gate_loss','gate_probability','gate_gradient_norm','expert_kl']
+                class_diagnostics[kind].append({k:log[k] for k in diagnostic_keys})
             _append(args.out / 'train.jsonl', log)
         summary = dict(epoch=epoch + 1, epochs=args.epochs, steps=steps,
                        mean_loss=epoch_loss / len(records), mean_gradient_norm=epoch_gradient / len(records),
                        output_edit_fraction=epoch_edits / epoch_pixels, target_edit_fraction=epoch_target_edits / epoch_pixels,
                        positive_targets=epoch_positive, identity_targets=len(records) - epoch_positive)
-        if variant is not None:
+        if conditioned:
             for kind, values in class_diagnostics.items():
                 summary[f'{kind}_loss'] = dict(points=len(values),
                     **({k: sum(v[k] for v in values) / len(values) for k in values[0]} if values else {}))
@@ -523,10 +638,18 @@ def train(args):
     fingerprint(train_ids)
     variant = cfg.get('v29_variant')
     args.variant = variant
+    conditional_variant = cfg.get('v30_variant')
+    args.conditional_variant = conditional_variant
     fit_ids, calibration_ids = (calibration_split(train_ids, args.seed) if variant == 'c'
                                 else (list(train_ids), []))
     schedule = dense_schedule(plan, cfg['qps'], args.seed)
     from .motion_learned import PROFILE_NAMES, profile_candidates
+    baseline_names = PROFILE_NAMES
+    registry = None
+    if conditional_variant is not None:
+        from .conditional_learned import profile_registry,profile_candidates
+        registry = profile_registry(conditional_variant)
+        PROFILE_NAMES = tuple(p['name'] for p in registry)
     from .motion_support import build_motion_support
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / 'cache/sources').mkdir(parents=True)
@@ -540,7 +663,9 @@ def train(args):
     teachers = ([ActionAnalyzer(name, device) for name in cfg['ar_teachers']] if args.task == 'ar'
                 else [DetectionAnalyzer(cfg['od_teacher'], device)])
     code = _code_manifest()
-    config_sha256, code_sha256 = _sha(args.config.read_bytes()), _sha(_json_bytes(code))
+    config_bytes=args.config.read_bytes()
+    config_sha256 = _sha(config_bytes.replace(b'\r\n',b'\n') if conditional_variant is not None else config_bytes)
+    code_sha256 = _sha(_json_bytes(code))
     manifest = dict(schema='adaptive-vcm-training-v7', task=args.task, seed=args.seed,
                     train_count=len(plan), train_ids=train_ids, train_ids_sha256=fingerprint(train_ids),
                     config=cfg, config_sha256=config_sha256, code=code, code_sha256=code_sha256,
@@ -563,6 +688,16 @@ def train(args):
             manifest['fit_calibration_caveat'] = 'C fits only the non-calibration TRAIN sources; A/B fit all collected TRAIN sources.'
             print(json.dumps(dict(warning=manifest['fit_calibration_caveat'],
                                   fit_count=len(fit_ids), calibration_count=len(calibration_ids))), flush=True)
+    if conditional_variant is not None:
+        manifest.update(schema='adaptive-vcm-training-v9',variant=conditional_variant,
+            profile_registry=registry,fit_ids=fit_ids,fit_ids_sha256=fingerprint(fit_ids),
+            calibration_ids=[],fit_count=len(fit_ids),calibration_count=0,
+            objective='conditional admission + positive-only measured strength/expert + editable RGB distillation',
+            objective_weights=dict(rgb=1.,alpha=.05,expert=.01,gate=.05),
+            gate_threshold=.5,utility_rule='1 + min(1, 10 * actual_marginal_saved_bytes / original_control_bytes)',
+            high_qp_weight=1.,source='fresh conditional renderer; fixed epochs; final-LAST; no DEV/GT selection',
+            baseline_profile_names=list(baseline_names))
+        manifest['config_digest_rule']='SHA256 UTF8 file bytes with CRLF normalized to LF'
     _write_json(args.out / 'training_manifest.json', manifest)
     records, previous_source = [], None
     for measurement, (source_index, codec_name, qp) in enumerate(schedule, 1):
@@ -604,10 +739,24 @@ def train(args):
         _append(args.out / 'measurements.jsonl', row)
         if measurement == 1 or measurement % 25 == 0 or measurement == len(schedule):
             print(json.dumps({k: row[k] for k in ('measurement', 'source_id', 'codec', 'qp', 'target_profile', 'marginal_saved_bytes')}), flush=True)
-    validate_training_records(records, train_ids, args.task, PROFILE_NAMES)
+    if conditional_variant is not None:
+        validate_training_records(records,train_ids,args.task,PROFILE_NAMES,conditional_variant)
+    else:
+        validate_training_records(records,train_ids,args.task,PROFILE_NAMES)
     fit_set = set(fit_ids)
     fit_records = [r for r in records if r['source_id'] in fit_set]
     static_orders = fit_static_orders(fit_records, PROFILE_NAMES, k=3)
+    baseline_static_orders = None
+    if conditional_variant is not None:
+        baseline_rows = [dict(r,profiles=r['baseline_profiles']) for r in fit_records]
+        baseline_static_orders = fit_static_orders(baseline_rows,baseline_names,k=3)
+        headroom = conditional_bank_summary(records,baseline_names)
+        costs = dict(distinct_codec_encodes=sum(r['distinct_codec_encodes'] for r in records),
+            distinct_teacher_evaluations=sum(r['distinct_teacher_evaluations'] for r in records),
+            candidate_measurement_slots=sum(r['candidate_measurement_slots'] for r in records),
+            actual_probe_codec_seconds=sum(r['actual_probe_codec_seconds'] for r in records))
+        _write_json(args.out/'bank_headroom.json',dict(groups=headroom,costs=costs))
+        print(json.dumps(dict(bank_headroom=headroom,actual_collection_costs=costs)),flush=True)
     measurements_hash = _sha((args.out / 'measurements.jsonl').read_bytes())
     train_source_sha256 = {row['source_id']: row['source_sha256'] for row in records}
     if variant != 'c':
@@ -625,6 +774,11 @@ def train(args):
         manifest.update(fit_positive_targets=sum(r['target_profile'] != 'identity' for r in fit_records),
                         fit_identity_targets=sum(r['target_profile'] == 'identity' for r in fit_records),
                         **calibration)
+    if conditional_variant is not None:
+        manifest.update(fit_positive_targets=sum(r['target_profile']!='identity' for r in fit_records),
+            fit_identity_targets=sum(r['target_profile']=='identity' for r in fit_records),
+            baseline_static_orders=baseline_static_orders,bank_headroom=headroom,
+            actual_collection_costs=costs,model_parameters=sum(p.numel() for p in model.parameters()))
     _write_json(args.out / 'training_manifest.json', manifest)
     state = dict(schema=model.schema, task=args.task, width=args.width, model=model.state_dict(),
                     steps=fitting['steps'], epochs=args.epochs, measurements=len(records), train_count=len(plan),
@@ -636,6 +790,10 @@ def train(args):
         state.update(variant=variant, fit_ids=fit_ids, fit_ids_sha256=fingerprint(fit_ids),
                      calibration_ids=calibration_ids)
         state.update(calibration)
+    if conditional_variant is not None:
+        state.update(variant=conditional_variant,profile_registry=registry,
+            fit_ids=fit_ids,fit_ids_sha256=fingerprint(fit_ids),calibration_ids=[],
+            baseline_static_orders=baseline_static_orders)
     torch.save(state, args.out / 'preprocessor_last.pth')
     return manifest
 
