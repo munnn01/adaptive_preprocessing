@@ -11,7 +11,7 @@ import numpy as np
 from .actions import action_registry
 from .guard import annotate_row, choose_feasible, is_feasible
 from .measure_store import validate_row
-from .metrics import _grid, paired_comparisons, summarize_curves
+from .metrics import _grid, add_point_diagnostics, paired_comparisons, summarize_curves
 from .protocol import CODECS, QPS, SOURCE_COUNTS, canonical_hash, code_manifest_v31, validate_config
 
 
@@ -126,8 +126,9 @@ def evaluate_portfolios(rows,policy,portfolios,task,cfg):
     cfg = validate_config(cfg)
     selected = select_portfolios(rows,policy,portfolios,task)
     pairs = [('anchor','oracle'),('expanded_static_k3','oracle'),('fixed_spatial','oracle')]
-    pairs.extend(('anchor',method) for method in selected[0]['choices'] if method not in ('oracle','fixed_spatial','expanded_static_k3'))
     result = paired_comparisons(selected,task,pairs,cfg['bootstrap_draws'],cfg['seed'])
+    add_point_diagnostics(result,selected,task,selected[0]['choices'])
+    result['uncertainty_scope'] = 'primary oracle versus anchor/expandedK3/fixed; all other curves are point diagnostics'
     result['selection_counts'] = {method:{name:sum(row['actions'][row['choices'][method]]['descriptor']['name']==name for row in selected)
                                           for name in [a['descriptor']['name'] for a in selected[0]['actions']]}
                                   for method in selected[0]['choices']}

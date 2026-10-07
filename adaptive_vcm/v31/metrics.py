@@ -15,6 +15,10 @@ from ..metrics import pchip_bd
 from .protocol import CODECS, QPS, canonical_hash
 
 
+class UndefinedTaskQuality(ValueError):
+    """A valid source resample contains no evaluable ground truth."""
+
+
 def summarize_curves(reference, test):
     arrays = []
     for curve in (reference, test):
@@ -105,6 +109,7 @@ class COCOMatchCache:
                          'recall_thresholds':ev.params.recThrs.tolist(), 'categories':self.categories,
                          'inputs_hash':canonical_hash({'predictions':predictions,'annotations':{
                              'gt_by_id':{str(k):v for k,v in gt_by_id.items()}, 'categories':annotations['categories']}})}
+        self.score_key = canonical_hash(self.identity)
 
     def score(self, source_occurrences=None):
         # Normal observed COCOeval sorts IDs; bootstrap remapped IDs preserve
@@ -141,7 +146,7 @@ class COCOMatchCache:
                 interpolated[t,valid] = precision[t,indices[valid]]
             category_precision.append(interpolated)
         if not category_precision:
-            raise ValueError('COCO AP undefined: no nonignored ground truth')
+            raise UndefinedTaskQuality('COCO AP undefined: no nonignored ground truth')
         precision = np.stack(category_precision,axis=2)
         return {'map_pct':float(precision.mean()*100), 'map50_pct':float(precision[0].mean()*100)}
 
@@ -229,7 +234,7 @@ def _condition_data(ids,lookup,task,method,codec,annotations=None):
             'ar_values':np.stack(ar_values,axis=1) if task == 'ar' else None,'caches':caches}
 
 
-def _curve(data,task,ids,sample=None):
+def _curve(data,task,ids,sample=None,score_pool=None):
     indices = np.arange(len(ids)) if sample is None else np.asarray(sample)
     rate = data['bits'][indices].sum(axis=0)/data['normalizers'][indices].sum(axis=0)
     if task == 'ar':
@@ -238,7 +243,12 @@ def _curve(data,task,ids,sample=None):
         continuous = [dict(zip(('top1_pct','true_probability','nll','brier'),map(float,value))) for value in values]
     else:
         occurrences = None if sample is None else [ids[i] for i in indices]
-        continuous = [cache.score(occurrences) for cache in data['caches']]
+        pool = {} if score_pool is None else score_pool
+        continuous = []
+        for cache in data['caches']:
+            if cache.score_key not in pool:
+                pool[cache.score_key] = cache.score(occurrences)
+            continuous.append(dict(pool[cache.score_key]))
         quality = [value['map_pct'] for value in continuous]
     return {'qps':list(QPS),'rate':rate.tolist(),'quality':quality,'continuous':continuous,
             'source_count':len(indices),'rate_unit':'bits_per_second' if task == 'ar' else 'bits_per_original_pixel'}
@@ -273,11 +283,20 @@ def paired_comparisons(rows,task,comparisons,draws,seed,annotations=None):
     if annotations is not None and canonical_hash({'gt_by_id':{str(k):v for k,v in annotations['gt_by_id'].items()},'categories':annotations['categories']}) != canonical_hash({'gt_by_id':{str(k):v for k,v in ann['gt_by_id'].items()},'categories':ann['categories']}):
         raise ValueError('external annotations differ from frozen rows')
     datasets = {(codec,method):_condition_data(ids,lookup,task,method,codec,ann) for codec in CODECS for method in methods}
-    observed = {key:_curve(data,task,ids) for key,data in datasets.items()}
+    observed_pool = {}
+    observed = {key:_curve(data,task,ids,score_pool=observed_pool) for key,data in datasets.items()}
     output, samples = {}, np.random.default_rng(seed).integers(0,len(ids),size=(draws,len(ids)))
     values = {(ref,test,codec):{'pchip':[],'cubic':[]} for ref,test in comparisons for codec in CODECS}
+    undefined_draws = 0
     for sample in samples:
-        sampled = {key:_curve(data,task,ids,sample) for key,data in datasets.items()}
+        draw_pool = {}
+        try:
+            sampled = {key:_curve(data,task,ids,sample,draw_pool) for key,data in datasets.items()}
+        except UndefinedTaskQuality:
+            undefined_draws += 1
+            for item in values.values():
+                item['pchip'].append(None); item['cubic'].append(None)
+            continue
         for ref,test in comparisons:
             for codec in CODECS:
                 summary = summarize_curves(sampled[codec,ref],sampled[codec,test])
@@ -293,6 +312,18 @@ def paired_comparisons(rows,task,comparisons,draws,seed,annotations=None):
     return {'task':task,'primary_model':'r2plus1d_18' if task == 'ar' else 'resnet50',
             'curves':{method:{codec:observed[codec,method] for codec in CODECS} for method in methods},
             'comparisons':output,'sampling':{'method':'paired_source_bootstrap','seed':seed,'draws':draws,
+                'undefined_quality_draws':undefined_draws,
                 'source_ids':ids,'shared_across_qps_codecs_methods_and_pairs':True,
                 'sample_indices_sha256':hashlib.sha256(samples.astype('<i8').tobytes()).hexdigest()},
             'coco_matching_cache':{'used':task == 'od','identities':[cache.identity for data in datasets.values() for cache in data['caches']]}}
+
+
+def add_point_diagnostics(result,rows,task,methods,reference='anchor'):
+    """All requested curves remain measured; only primary pairs get bootstrap."""
+    for method in methods:
+        if method not in result['curves']:
+            result['curves'][method] = {codec:curves(rows,task,method,codec) for codec in CODECS}
+    result['point_comparisons'] = {f'{reference}->{method}':{
+        codec:summarize_curves(result['curves'][reference][codec],result['curves'][method][codec])
+        for codec in CODECS} for method in methods if method!=reference}
+    return result

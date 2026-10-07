@@ -14,7 +14,7 @@ from .guard import annotate_row,choose_feasible
 from .measure import CandidateEncodingError,collect,prepare_support
 from .measure_models import ObservationCache,json_value,model_hashes
 from .measure_store import atomic_json,load_measurements,read_json,sha
-from .metrics import paired_comparisons
+from .metrics import add_point_diagnostics,paired_comparisons
 from .oracle import project_rows,select_portfolios
 from .protocol import CODECS,QPS,SOURCE_COUNTS,canonical_hash,code_manifest_v31,validate_config
 from .selector import RUNTIME_FIELDS,build_context
@@ -201,9 +201,10 @@ def evaluate_dev(plan,selector,policy,statics,cfg,out,models):
     rows = project_rows(rows,action_registry(task,cfg['v31_arm']))
     rows = [dict(row,artifact_store=str(store)) for row in rows]
     selected,budgets,counts = _replay(rows,selector,policy,statics,task)
-    comparisons = [('anchor','learned'),('expanded_static_k3','learned'),('fixed_spatial','learned'),
-                   ('legacy_static_k3','learned'),('controls','learned'),('anchor','diagnostic_union_controls')]
+    comparisons = [('anchor','learned'),('expanded_static_k3','learned'),('fixed_spatial','learned')]
     results = paired_comparisons(selected,task,comparisons,cfg['bootstrap_draws'],cfg['seed'])
+    add_point_diagnostics(results,selected,task,selected[0]['choices'])
+    results['uncertainty_scope'] = 'primary learned versus anchor/expandedK3/fixed; all other curves are point diagnostics'
     claims = adaptive_claims(results)
     complete = len({row['source_id'] for row in rows})==SOURCE_COUNTS[task]['dev']
     if not complete:

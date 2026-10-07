@@ -163,3 +163,16 @@ def test_od_size_freezes_once_and_oracle_scores_complete_set_coco():
     selected = g.select_portfolios(measured,policy,portfolio,'od')
     assert {row['actions'][row['choices']['oracle']]['descriptor']['name'] for row in selected} == {'area224'}
     assert curves(selected,'od','oracle','h264')['quality'] == pytest.approx([100,56.43564356435643,25.24752475247524,6.435643564356436])
+
+
+def test_only_primary_pairs_bootstrap_but_all_diagnostic_curves_remain():
+    g = mod()
+    registry,measured,policy = static_fixture()
+    for row in measured:
+        for action in row['actions']:
+            action['predictions']['evaluators']={'r2plus1d_18':ar([.8,.2])}
+    portfolios = g.fit_static(measured,policy,registry,'ar')
+    result = g.evaluate_portfolios(measured,policy,portfolios,'ar',cfg('b'))
+    assert set(result['comparisons'])=={'anchor->oracle','expanded_static_k3->oracle','fixed_spatial->oracle'}
+    assert {'area112','area96','area112_guarded','area96_guarded','controls','legacy_static_k3'} <= set(result['curves'])
+    assert result['uncertainty_scope']=='primary oracle versus anchor/expandedK3/fixed; all other curves are point diagnostics'

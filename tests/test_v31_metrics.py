@@ -201,3 +201,49 @@ def test_od_paired_comparison_recomputes_global_ap_for_duplicates():
     assert pair['pchip_ci']['hi'] == pytest.approx((80/90-1)*100)
     assert pair['pchip_ci']['sufficient_valid_draws']
     assert result['coco_matching_cache']['used']
+
+
+def test_identical_coco_curve_predictions_score_once_per_shared_draw(monkeypatch):
+    g = mod()
+    preds,annotations = coco_fixture()
+    rows = []
+    for codec in CODECS:
+        for qp in QPS:
+            for p in preds:
+                predictions = {'evaluators':{'resnet50':{'original':p}}}
+                rows.append({'source_id':p['source_id'],'task':'od','codec':codec,'qp':qp,
+                             'ground_truth':{'image_id':p['image_id'],'annotations':annotations['gt_by_id'][p['image_id']],
+                                             'categories':annotations['categories']},
+                             'source':{'original_shape':[10,20]},
+                             'actions':[{'total_bytes':b,'predictions':predictions} for b in (1000,800,900)],
+                             'choices':{'learned':1,'static':2}})
+    calls = []
+    original = g.COCOMatchCache.score
+    def counted(self,occurrences=None):
+        calls.append(None if occurrences is None else tuple(occurrences))
+        return original(self,occurrences)
+    monkeypatch.setattr(g.COCOMatchCache,'score',counted)
+    g.paired_comparisons(rows,'od',[('anchor','learned'),('static','learned')],5,2)
+    assert len(calls)==6  # one observed set + each of the five shared resamples
+
+
+def test_od_resample_without_nonignored_gt_is_invalid_draw_not_stage_failure():
+    g = mod()
+    preds,annotations = coco_fixture()
+    rows = []
+    for codec in CODECS:
+        for qp in QPS:
+            for p in preds:
+                prediction = {'evaluators':{'resnet50':{'original':p}}}
+                rows.append({'source_id':p['source_id'],'task':'od','codec':codec,'qp':qp,
+                             'ground_truth':{'image_id':p['image_id'],'annotations':annotations['gt_by_id'][p['image_id']],
+                                             'categories':annotations['categories']},
+                             'source':{'original_shape':[10,20]},
+                             'actions':[{'total_bytes':size,'predictions':prediction} for size in (1000,800)],
+                             'choices':{'learned':1}})
+    samples = np.random.default_rng(2).integers(0,3,size=(50,3))
+    expected = int(np.all(samples==2,axis=1).sum())
+    assert expected>0
+    result = g.paired_comparisons(rows,'od',[('anchor','learned')],50,2)
+    assert result['sampling']['undefined_quality_draws']==expected
+    assert result['comparisons']['anchor->learned']['h264']['pchip_ci']['invalid_draws']==50  # all point curves are plateaus
