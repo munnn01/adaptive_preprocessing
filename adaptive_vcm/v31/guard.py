@@ -200,8 +200,18 @@ def fit_policy(cal_rows, task, cfg):
         raise ValueError('invalid guard task')
     rows = role_view(cal_rows, 'cal')
     names = cfg['ar_teachers'] if task == 'ar' else [cfg['od_teacher']]
+    identities = {canonical_hash({'models': row['model_hashes'], 'code': row.get('code_manifest_hash'),
+                                  'config': row.get('config_hash')}) for row in rows}
+    if len(identities) > 1:
+        raise ValueError('CAL model/code/config identity changed')
     policy = {'version': VERSION, 'task': task, 'arm': cfg['v31_arm'], 'teacher_names': names,
               'config_hash': canonical_hash(cfg), 'cal_hash': canonical_hash(rows),
+              'cal_model_hashes': rows[0]['model_hashes']['teachers'] if rows else {},
+              'cal_code_manifest_hash': rows[0].get('code_manifest_hash') if rows else None,
+              'cal_measurement_config_hash': rows[0].get('config_hash') if rows else None,
+              'cal_source_ids': sorted({row['source_id'] for row in rows}),
+              'cal_pixels_sha256': sorted({row.get('source', {}).get('source_sha256') for row in rows
+                                          if row.get('source', {}).get('source_sha256')}),
               'strict_config': {key: cfg[key] for key in ('ar_confidence', 'ar_require_anchor_decision', 'od_score_threshold')},
               'min_savings': cfg['min_savings'], 'temperatures': {}, 'groups': {}}
     cells, sources = set(), {}
