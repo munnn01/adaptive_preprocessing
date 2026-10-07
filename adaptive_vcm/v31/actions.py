@@ -91,6 +91,22 @@ def execute_action(source: dict, action: Action, qp: int, support: dict) -> dict
     original_shape. AR may omit geometry metadata because its source is square.
     An unavailable action returns no RGB/recipe and must never be encoded.
     """
+    return _execute_action(source, action, qp, support, {})
+
+
+def execute_actions(source: dict, registry: tuple[Action, ...], qp: int, support: dict) -> list[dict]:
+    """Validated single-action logic with banks scoped to this source/condition.
+
+    Each authoritative renderer runs once. No pixels can be injected by a caller;
+    aliases retain independent owned results and their individual wire recipes.
+    """
+    if not isinstance(registry, tuple) or not registry or len(set(registry)) != len(registry):
+        raise ValueError("expected nonempty unique frozen action tuple")
+    banks = {}
+    return [_execute_action(source, action, qp, support, banks) for action in registry]
+
+
+def _execute_action(source, action, qp, support, banks):
     if not isinstance(source, dict) or not isinstance(action, Action):
         raise ValueError("expected source dictionary and frozen Action")
     task = source.get("task")
@@ -136,16 +152,20 @@ def execute_action(source: dict, action: Action, qp: int, support: dict) -> dict
                 (protection < 0) | (protection > 1)):
             raise ValueError("controls require finite [0,1] HW control_protection")
         control = action.name if action.kind == "control" else "background8"
-        pixels = next(c.clip for c in make_candidates(rgb, protection, task, qp) if c.name == control)
+        if "control" not in banks:
+            banks["control"] = {c.name: c.clip for c in make_candidates(rgb, protection, task, qp)}
+        pixels = banks["control"][control]
     elif action.kind == "profile":
-        owned_support = {key: np.array(support[key], copy=True) for key in ("protection", "motion", "cuts")}
-        pixels = next(c.clip for c in profile_candidates(rgb, owned_support, task, qp, variant="a")
-                      if c.name == action.profile)
+        if "profile" not in banks:
+            owned_support = {key: np.array(support[key], copy=True) for key in ("protection", "motion", "cuts")}
+            banks["profile"] = {c.name: c.clip for c in profile_candidates(rgb, owned_support, task, qp, variant="a")}
+        pixels = banks["profile"][action.profile]
     elif action.kind == "temporal":
         # V30-C's third slot at full strength; no strength sweep or drop2 mix.
-        owned_support = {key: np.array(support[key], copy=True) for key in ("protection", "motion", "cuts")}
-        pixels = next(c.clip for c in conditional_profiles(rgb, owned_support, task, qp, variant="c")
-                      if c.name == action.profile)
+        if "temporal" not in banks:
+            owned_support = {key: np.array(support[key], copy=True) for key in ("protection", "motion", "cuts")}
+            banks["temporal"] = {c.name: c.clip for c in conditional_profiles(rgb, owned_support, task, qp, variant="c")}
+        pixels = banks["temporal"][action.profile]
     else:
         pixels = rgb.copy()
     if action.kind != "control" and action.size is not None and pixels.shape[1:3] != (action.size, action.size):
