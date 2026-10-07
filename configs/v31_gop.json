@@ -1,0 +1,17 @@
+{
+  "schema": "v31-gop-audit-1",
+  "task": "ar",
+  "frames": 64,
+  "ar_size": 128,
+  "qps": [30, 35, 40, 45],
+  "codecs": ["h264", "h265"],
+  "gops": [8, 16, 32],
+  "sizes": [112, 96],
+  "preset": "medium",
+  "scenecut": false,
+  "closed_gop": true,
+  "bframes": 0,
+  "window_starts": [0, 16, 32],
+  "window_stride": 2,
+  "empirical_startup_required": true
+}
