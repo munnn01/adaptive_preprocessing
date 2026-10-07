@@ -182,8 +182,17 @@ def run_stage(args):
                 'code_provenance':code_manifest_v31(ROOT),'plan_hash':canonical_hash(portable_plan(plans))}
     state_path = out/'run_state.json'
     state = read_json(state_path) if state_path.exists() else {'identity':identity,'stages':{}}
-    if state.get('identity')!=identity:
+    parent = state.get('identity',{})
+    parent_configs = parent.get('config_hashes',{})
+    same_parent = ({k:v for k,v in parent.items() if k!='config_hashes'} ==
+                   {k:v for k,v in identity.items() if k!='config_hashes'})
+    requested_subset = (isinstance(parent_configs,dict) and
+                        all(parent_configs.get(arm)==digest for arm,digest in identity['config_hashes'].items()))
+    if not same_parent or not requested_subset:
         raise ValueError('resume plan/config/code identity mismatch')
+    # Execution can request an exact subset; the immutable parent experiment
+    # and its complete measurement/config identity remain unchanged.
+    identity = parent
     counts = {split:len(records) for split,records in plans.items()}
     atomic_json(out/'plan.json',{'version':'v31-source-plan-1','task':args.task,'plans':plans,
                                'counts':counts,'plan_hash':identity['plan_hash'],

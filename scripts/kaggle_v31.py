@@ -113,13 +113,18 @@ def prepare_v31(args):
         if args.stage!='oracle': raise ValueError('shards are measurement only')
         job['shard']=read_json(args.shard_manifest)
         job['stages']=['startup','measure']
-    if args.stage=='train-dev':
-        dataset = getattr(args,'resume_dataset',None)
-        directory = getattr(args,'resume_directory',None)
+    dataset = getattr(args,'resume_dataset',None)
+    directory = getattr(args,'resume_directory',None)
+    if args.stage=='train-dev' or dataset or directory:
         if not directory or not re.fullmatch('[a-zA-Z0-9_-]+/[a-z0-9-]+/[1-9][0-9]*',dataset or ''):
-            raise ValueError('train-dev requires verified gate/measurement resume and explicit dataset version')
-        from scripts.run_v31_jobs import audit_artifacts
-        audit = audit_artifacts(directory,args.commit,require_gate=True,arm=args.arm)
+            raise ValueError('continuation requires verified gate/measurement resume and explicit dataset version')
+        from scripts.run_v31_jobs import audit_artifacts,audit_partial_artifacts
+        audit = (audit_artifacts(directory,args.commit,require_gate=True,arm=args.arm) if args.stage=='train-dev'
+                 else audit_partial_artifacts(directory,args.commit))
+        if args.stage=='oracle' and audit['shard']:
+            if job['shard'] is not None and job['shard']!=audit['shard']:
+                raise ValueError('resume shard differs from checkpoint')
+            job['shard']=audit['shard']; job['stages']=['startup','measure']
         resume = Path(directory)/'resume_manifest.json'
         if not resume.is_file(): raise ValueError('verified resume manifest missing')
         # Validate all checksums without copying; same rules as import_resume.
@@ -129,7 +134,8 @@ def prepare_v31(args):
             if not path.is_relative_to(Path(directory).resolve()) or path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=digest:
                 raise ValueError('resume checksum/path mismatch')
         job['resume']={'dataset_version':dataset,'manifest_sha256':hashlib.sha256(resume.read_bytes()).hexdigest(),'audit':audit}
-        job['stages']=['train','dev']; datasets.append(dataset)
+        if args.stage=='train-dev': job['stages']=['train','dev']
+        datasets.append(dataset)
     directory = Path(args.directory)
     notebook = {'nbformat':4,'nbformat_minor':5,'metadata':{'kernelspec':{'display_name':'Python 3','language':'python','name':'python3'}},
                 'cells':[{'cell_type':'code','metadata':{},'execution_count':None,'outputs':[],'source':notebook_source(job).splitlines(True)}]}

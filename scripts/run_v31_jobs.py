@@ -15,7 +15,7 @@ import tarfile
 
 from scripts.kaggle_runner import pool_environment
 from adaptive_vcm.v31.protocol import canonical_hash,SOURCE_COUNTS,validate_partitions
-from adaptive_vcm.v31.measure_store import atomic_json,load_measurements,read_json,sha,condition_path,assert_complete
+from adaptive_vcm.v31.measure_store import atomic_json,load_measurements,read_json,sha,condition_path,assert_complete,read_condition
 from adaptive_vcm.v31.oracle import validate_gate
 
 TERMINAL={'COMPLETE','ERROR','CANCEL_ACKNOWLEDGED','CANCELLED'}
@@ -164,13 +164,90 @@ def audit_artifacts(directory,commit,require_gate=False,arm='all'):
             'sources':len(ids),'conditions':len(rows),'expected_hash':canonical_hash(expected),'eligible_arms':eligible,'gates':gates}
 
 
+def audit_partial_artifacts(directory,commit):
+    """Verify existing cells without promoting incomplete grids to eligibility."""
+    directory=Path(directory); plan=read_json(directory/'plan.json'); state=read_json(directory/'run_state.json')
+    identity=state['identity']; task=identity['task']; plans=plan['plans']
+    from adaptive_vcm.v31.run import portable_plan,_check_plan
+    _check_plan(plans,task)
+    counts={split:len(records) for split,records in plans.items()}
+    if (counts!=SOURCE_COUNTS[task] or plan['counts']!=counts or not plan['full_protocol'] or
+            plan['plan_hash']!=canonical_hash(portable_plan(plans)) or plan['plan_hash']!=identity['plan_hash'] or
+            identity['code_provenance']['commit']!=commit):
+        raise ValueError('partial checkpoint parent plan/release/count mismatch')
+    provenance=identity['code_provenance']
+    if provenance['manifest_hash']!=canonical_hash({k:v for k,v in provenance.items() if k!='manifest_hash'}):
+        raise ValueError('partial checkpoint code provenance checksum mismatch')
+    store=directory/'measurements'; expected=read_json(store/'expected.json')
+    if expected['task']!=task or expected['config_hash']!=identity['measurement_config_hash'] or expected['code_provenance']!=provenance:
+        raise ValueError('partial measurement code/config identity mismatch')
+    if expected.get('tracked_config_sha256')!=provenance['files_sha256'].get('configs/v31_b.json'):
+        raise ValueError('partial tracked config digest differs from release')
+    from dataclasses import asdict
+    from adaptive_vcm.v31.actions import action_registry
+    if expected['registry']!=[asdict(action) for action in action_registry(task,'b')]:
+        raise ValueError('partial measurement registry differs from frozen B-union bank')
+    names=({'teachers':{'r3d_18','mc3_18'},'evaluators':{'r2plus1d_18','r3d_18'}} if task=='ar'
+           else {'teachers':{'mobilenet'},'evaluators':{'resnet50'}})
+    if (set(expected['model_hashes'])!=set(names) or
+            any(set(expected['model_hashes'][role])!=group for role,group in names.items()) or
+            any(not isinstance(digest,str) or re.fullmatch('[0-9a-f]{64}',digest) is None
+                for group in expected['model_hashes'].values() for digest in group.values())):
+        raise ValueError('partial frozen named model identity mismatch')
+    parent_ids=[r['id'] for split in ('fit','cal','tune') for r in plans[split]]
+    shard_path=directory/'shard.json'; shard=read_json(shard_path) if shard_path.exists() else None
+    ids=parent_ids
+    if shard:
+        chosen=shard.get('source_ids',[])
+        if shard.get('parent_plan_hash')!=plan['plan_hash'] or not chosen or len(chosen)!=len(set(chosen)) or not set(chosen)<=set(parent_ids):
+            raise ValueError('partial source shard parent identity mismatch')
+        ids=[identifier for identifier in parent_ids if identifier in set(chosen)]
+    if expected['source_ids']!=ids:
+        raise ValueError('partial measurement source membership differs from parent/shard')
+    membership={r['id']:split for split in ('fit','cal','tune') for r in plans[split] if r['id'] in set(ids)}
+    if expected['source_splits']!=membership: raise ValueError('partial measurement source partition mismatch')
+    for key in ('source_pixels_sha256','source_metadata','ground_truth_hashes'):
+        if set(expected[key])!=set(ids): raise ValueError('partial source metadata membership mismatch')
+    for records in plans.values():
+        for record in records:
+            identifier=record['id']
+            if identifier not in membership: continue
+            truth={key:record[key] for key in ('label','image_id','annotations','categories') if key in record}
+            if (expected['ground_truth_hashes'][identifier]!=canonical_hash(truth) or
+                    expected['source_metadata'][identifier]['source_sha256']!=expected['source_pixels_sha256'][identifier]):
+                raise ValueError('partial parent ground truth/source metadata mismatch')
+    validate_partitions({split:[r for r in plans[split] if r['id'] in set(ids)] for split in ('fit','cal','tune')},expected['source_pixels_sha256'])
+    rows=[]; seen=set()
+    for path in sorted((store/'conditions').glob('*.json')):
+        envelope=read_json(path); row=read_condition(path,envelope['identity'],store)
+        identifier=row['source_id']; key=(identifier,row['codec'],row['qp'])
+        if key in seen or identifier not in membership or path!=condition_path(store,*key):
+            raise ValueError('duplicate/unexpected partial measurement condition')
+        seen.add(key)
+        if (row['task']!=task or row['config_hash']!=expected['config_hash'] or row['model_hashes']!=expected['model_hashes'] or
+                row['code_manifest_hash']!=provenance['manifest_hash'] or row['split']!=membership[identifier] or
+                row['source']!=expected['source_metadata'][identifier] or
+                row['source']['source_sha256']!=expected['source_pixels_sha256'][identifier] or
+                canonical_hash(row['ground_truth'])!=expected['ground_truth_hashes'][identifier] or
+                [a['descriptor'] for a in row['actions']]!=expected['registry']):
+            raise ValueError('partial condition does not match expected parent observation identity')
+        rows.append(row)
+    complete=(store/'complete.json').exists()
+    if complete: load_measurements(store,expected)
+    return {'version':'v31-partial-measurement-audit-1','commit':commit,'task':task,'plan_hash':plan['plan_hash'],
+            'sources':len(ids),'conditions':len(rows),'expected_conditions':len(ids)*8,'complete':complete,
+            'primary_complete':complete and shard is None,'eligible':False,'expected_hash':canonical_hash(expected),'shard':shard,
+            'scope':'verified measurement checkpoint only; never authorizes optimizer or oracle completeness'}
+
+
 def package_resume(source,destination):
     source,destination=Path(source).resolve(),Path(destination).resolve()
     if destination.exists() or destination==source or destination.is_relative_to(source): raise ValueError('resume destination must be new and outside source')
     entries={}
     for path in sorted(source.rglob('*')):
         if path.is_symlink(): raise ValueError('unsafe resume symlink')
-        if path.is_file() and path.name not in ('archive_manifest.json','resume_manifest.json'):
+        if (path.is_file() and path.name not in ('archive_manifest.json','resume_manifest.json') and
+                path.relative_to(source).as_posix()!='runtime.json'):
             entries[path.relative_to(source).as_posix()]=sha(path.read_bytes())
     if not entries: raise ValueError('empty resume')
     for name in entries:
@@ -304,10 +381,18 @@ class Registry:
         self.save(value); return {'archive':entry['archive'],'audit':entry.get('audit'),'audit_pending':entry.get('audit_pending'),'shard_audit':entry.get('shard_audit')}
     def resume(self,identifier,destination):
         value=self.read(); entry=value['jobs'][identifier]
-        if not entry.get('audit'): raise ValueError('resume requires collected audited full oracle artifacts')
-        audit_artifacts(entry['archive']['directory'],entry['job']['commit'],require_gate=True,arm=entry['job']['arm'])
-        manifest=package_resume(entry['archive']['directory'],destination)
-        entry['resume']={'directory':str(Path(destination).resolve()),'manifest_hash':canonical_hash(manifest),'utc':now()}; self.save(value); return entry['resume']
+        if not entry.get('archive'): raise ValueError('resume requires collected verified measurement artifacts')
+        directory=Path(entry['archive']['directory'])
+        if (directory/'archive_manifest.json').exists(): verify_archive(directory,entry['job']['commit'])
+        audit=audit_partial_artifacts(directory,entry['job']['commit'])
+        allowed=['oracle']
+        if entry.get('audit',{}).get('eligible_arms'):
+            audit_artifacts(directory,entry['job']['commit'],require_gate=True,arm=entry['job']['arm']); allowed.append('train-dev')
+        manifest=package_resume(directory,destination)
+        entry['resume']={'directory':str(Path(destination).resolve()),'manifest_hash':canonical_hash(manifest),
+                         'audit':audit,'allowed_stages':allowed,'utc':now()}
+        entry['history'].append({'action':'resume','utc':now(),'allowed_stages':allowed})
+        self.save(value); return entry['resume']
 
 
 def main():

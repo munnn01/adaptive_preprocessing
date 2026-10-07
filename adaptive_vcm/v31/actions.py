@@ -194,6 +194,10 @@ def map_detections(prediction: dict, coded_shape: tuple, source_transform: tuple
         raise ValueError("detections require boxes, scores and labels")
     arrays = {key: np.asarray(prediction[key]) for key in ("boxes", "scores", "labels")}
     boxes = arrays["boxes"]
+    # JSON has no shape metadata: legitimate (0,4) detector arrays become [].
+    # Normalize only that representation, not malformed Nx0/Nx3 arrays.
+    if boxes.ndim == 1 and boxes.size == 0:
+        boxes = boxes.reshape(0, 4)
     if boxes.ndim != 2 or boxes.shape[1] != 4 or not np.isfinite(boxes).all():
         raise ValueError("boxes must be finite Nx4")
     if any(arrays[key].shape != (len(boxes),) for key in ("scores", "labels")):
