@@ -11,5 +11,6 @@
   "tracking_dependency": "supervision==0.27.0",
   "document_local_links": "passed",
   "credential_scan": "no matches to local account-pool secrets",
+  "independent_publication_review": "passed; no outstanding critical or important findings",
   "figure": "PNG and SVG visually inspected"
 }

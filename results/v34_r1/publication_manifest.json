@@ -70,7 +70,9 @@
     "adaptive_vcm/v33ap/model.py": "4d78cf88425a4023be2af8434645ac917570fcb8cab528d709dc7541bf28b8e5",
     "adaptive_vcm/v34/checkpoint.py": "2fdce0c4072cc4de9deb68744a22c28d9e9ebc4ae2369ebde017664c56f82992",
     "adaptive_vcm/v34/model.py": "128665b131bab4133d85bda3d98ed7ed197a3552b64db4e3889f767cc99c7ee3",
-    "adaptive_vcm/v34/holdout.py": "680da11dc78437ea1f435a93eadd6e18eda305f0b30b9870f3a09d8636747bbf"
+    "adaptive_vcm/v34/holdout.py": "680da11dc78437ea1f435a93eadd6e18eda305f0b30b9870f3a09d8636747bbf",
+    "configs/v34.json": "40df2dd297d306bf39844833c0d8be3accbe580c40242008f4a262223d6db329",
+    "configs/v34_arot_r1.json": "d97c23f326fc8c32a176da87945f93de9509de3b113f3a5a199019eca6f08f72"
   },
   "compressed_files": {
     "results/v34_r1/shards/shard0/test_rows.json.gz": {

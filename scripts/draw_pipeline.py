@@ -61,7 +61,7 @@ def main():
     text(4.4,7.78,'RGB',9.5)
     arrow([(4.05,6.41),(4.05,6.12)])
     arrow([(6.1,6.69),(5.7,6.69),(5.7,6.24),(4.8,6.24),(4.8,6.12)])
-    text(7.42,6.24,'codec / QP / task / domain',9)
+    text(7.42,6.26,'codec / QP / budget\ntask mask / domain',8.5)
     arrow([(1.3,4.93),(1.3,4.58),(10.6,4.58),(10.6,4.93)],'#677b92',True,
           (6.0,4.75,'Clean-source reference: sender only; no source RGB or maps sent'))
     text(.4,3.98,'Anchor: unchanged RGB → same codec / QP / GOP → same decoder → same frozen Video Swin-T',11,ha='left')
@@ -87,6 +87,8 @@ def main():
     fig.savefig(destination/'v34_pipeline.svg',bbox_inches='tight',pad_inches=.16,
                 metadata={'Title':'V34-R1 adaptive preprocessing pipeline',
                           'Description':'Sender-only region-aware filter selection using a frozen CNN GRU controller and real codec trials; standard decoder and frozen Video Swin-T at receiver. Offline fixed measurements supervise only controller parameters.'})
+    svg = destination/'v34_pipeline.svg'
+    svg.write_bytes(('\n'.join(line.rstrip() for line in svg.read_text(encoding='utf-8').splitlines())+'\n').encode())
     plt.close(fig)
 
 

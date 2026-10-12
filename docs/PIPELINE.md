@@ -17,14 +17,14 @@ flowchart LR
     inputs["RGB + 3 maps<br/>6 channels / frame"] --> resize["Resize 48 × 48"]
     resize --> cnn["Conv 6→12, stride 2 + SiLU<br/>Conv 12→16, stride 2 + SiLU<br/>Global average pooling"]
     cnn --> gru["GRU 16→24<br/>temporal features"]
-    conditions["9 conditions<br/>codec + QP + task mask + domain"] --> head["Linear 33→32→65"]
+    conditions["9 conditions<br/>codec + QP + task mask + budget + domain"] --> head["Linear 33→32→65"]
     gru --> head
     head --> outputs["13 actions × 5 values<br/>logit, AR/OD/OT risk, positive rate"]
     classDef learned fill:#dbf5ec,stroke:#247d65,color:#142d26
     class cnn,gru,head learned
 ```
 
-R1 có **8.661 tham số**, input điều kiện dài 9. Default `Controller(..., conditions=6)` tồn tại để tương thích recipe cơ sở; ba checkpoint công bố dùng **9**, theo `domain_condition=true` trong R1.
+R1 có **8.661 tham số**, input điều kiện dài 9: codec (1), QP (1), task mask AR/OD/OT (3), budget ratio (1), domain AR/OD/OT (3). Default `Controller(..., conditions=6)` tồn tại để tương thích recipe cơ sở; ba checkpoint công bố dùng **9**, theo `domain_condition=true` trong R1.
 
 Controller không trực tiếp sinh RGB bằng một mạng restoration. Nó dự đoán action và rate/risk; bộ lọc RGB là toán tử cố định theo action được chọn. Risk cho task không hoạt động không tham gia loss/guard.
 

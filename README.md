@@ -8,7 +8,7 @@ Repository này chỉ công bố **V34-R1 và lượt kiểm chứng độc lậ
 
 ![V34-R1: adaptive preprocessing ở sender, decoder chuẩn và Video Swin ở receiver; codec thật tạo supervision offline](docs/figures/v34_pipeline.png)
 
-RGB nguồn đi vào detector và bộ tính chuyển động để tạo ba bản đồ: object/history, context/motion và background. CNN+GRU dùng RGB, các bản đồ và điều kiện codec/QP/task/domain để đề xuất action. Có **13 action cố định**, gồm identity; đây là các cấu hình lọc tần số theo vùng, không phải 13 mạng được huấn luyện.
+RGB nguồn đi vào detector và bộ tính chuyển động để tạo ba bản đồ: object/history, context/motion và background. CNN+GRU dùng RGB, các bản đồ và điều kiện codec/QP/task mask/budget/domain để đề xuất action. Có **13 action cố định**, gồm identity; đây là các cấu hình lọc tần số theo vùng, không phải 13 mạng được huấn luyện.
 
 Phía gửi thử identity và tối đa ba action khác qua **codec thật**, kiểm tra rate và độ nhất quán với nguồn trên ảnh đã decode, rồi chọn packet nhỏ nhất vượt qua guard. Đây là phép tìm kiếm ứng viên với nhiều lần encode. Chỉ packet được chọn được truyền; RGB gốc và bản đồ vùng dùng tại sender. Phía nhận chạy decoder độc lập rồi Video Swin-T.[^swin]
 
@@ -24,7 +24,7 @@ flowchart LR
     subgraph sender["Sender: adaptive preprocessing and candidate search"]
         source_rgb["Source RGB"]
         region_maps["Source detector + causal motion<br/>3 region maps"]
-        controller["Frozen CNN + GRU controller<br/>RGB + maps + codec/QP/task/domain"]
+        controller["Frozen CNN + GRU controller<br/>RGB + maps + codec/QP/task mask/budget/domain"]
         candidates["13 fixed actions<br/>shortlist: 3 edits + identity"]
         codec_trials["Real x264 / x265 trials<br/>encode + sender decode"]
         source_guard["Source-only consistency guard<br/>measured rate; identity fallback"]
