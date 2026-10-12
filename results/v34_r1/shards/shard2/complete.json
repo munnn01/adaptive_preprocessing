@@ -1,0 +1,23 @@
+{
+  "status": "complete",
+  "shard": 2,
+  "sources": 256,
+  "global_ids_sha256": "c46661839e689aaba7efc4f16484cac72306dd040f48907fba40f9cb1f4b3c8b",
+  "checkpoint_sha256": [
+    "c4622dbd701df88444344ec908263ccebcbbd28da40c9812c1b86749169c1577",
+    "5186940d2d687325cea6caba2cde0a69fa6182bba92df949e39753d53f4f77cc",
+    "d8c78f2bb1fc5a20883b5d81013555fb1ec66d489cf08648ae0533c8e4efaf4b"
+  ],
+  "parameter_updates": false,
+  "training_performed": false,
+  "controller_state_before": [
+    "c8ecce05057b01d71c1493df97c6f0c9cbb4d03b5a44dd0dea5fc8917a64fc87",
+    "39cf1051818343fb3bdc7b3489e6b204c7452dffecd6724423a717378e85fa24",
+    "c7b2020bbb154ecf135d0d75eea0f8e24e9ca93375ea36e265fa12bba5afc3a3"
+  ],
+  "controller_state_after": [
+    "c8ecce05057b01d71c1493df97c6f0c9cbb4d03b5a44dd0dea5fc8917a64fc87",
+    "39cf1051818343fb3bdc7b3489e6b204c7452dffecd6724423a717378e85fa24",
+    "c7b2020bbb154ecf135d0d75eea0f8e24e9ca93375ea36e265fa12bba5afc3a3"
+  ]
+}

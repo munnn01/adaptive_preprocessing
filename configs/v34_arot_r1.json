@@ -1,0 +1,14 @@
+{
+  "schema": "adaptive-vcm-v34-1", "revision": "arot-r1",
+  "seeds": [303401,303402,303403], "codecs": ["h264","h265"],
+  "qps": [30,35,40,45,50], "preset": "medium", "fps": 25,
+  "frames": 16, "temporal_stride": 2, "ar_size": 128, "od_size": 320,
+  "ot_size": 960, "train_count": 48, "cal_count": 16, "dev_count": 16,
+  "test_count": 64, "ot_frames": 256, "epochs": 30, "lr": 0.001,
+  "damage_tolerance": [0.05,0.05,0.05], "budget_ratio": 1.01,
+  "cal_coverage": 0.9, "fixed_action": 11,
+  "domain_condition": true, "risk_scale": [0.05,0.05,0.05],
+  "detector": "resnet50", "ot_detector_size": 960,
+  "detector_detections": 300, "detector_batch": 2,
+  "source_guard_limits": [0.025,0,0.05], "source_shortlist": 3
+}

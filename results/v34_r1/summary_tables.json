@@ -1,0 +1,918 @@
+{
+  "primary_confirmed": true,
+  "n": 1024,
+  "metrics": [
+    {
+      "codec": "h264",
+      "seed": 303401,
+      "backbone": "swin3d_t",
+      "bd_rate_pct": -14.457639984676074,
+      "pchip_bd_rate_pct": -16.12674938653932,
+      "bd_quality_pp": 4.133532202457853,
+      "ci_lo": -17.1877901082054,
+      "ci_hi": -11.677602318036849,
+      "confidence": 0.975,
+      "finite_draws": 5000,
+      "point_passes": true,
+      "failed_guards": [],
+      "primary": true,
+      "same_qp_accuracy_delta_pp": [
+        0.68359375,
+        1.66015625,
+        2.83203125,
+        5.2734375,
+        3.90625
+      ],
+      "same_qp_rate_delta_pct": [
+        -12.797275429767874,
+        -9.79560518731013,
+        -6.353942831952642,
+        -3.883458315170607,
+        -1.9049934009244707
+      ]
+    },
+    {
+      "codec": "h264",
+      "seed": 303401,
+      "backbone": "r3d_18",
+      "bd_rate_pct": 1.2496688733584227,
+      "pchip_bd_rate_pct": 2.3566950466745546,
+      "bd_quality_pp": -0.41061560045842666,
+      "ci_lo": -2.0999822326966915,
+      "ci_hi": 4.444971009971077,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": false,
+      "failed_guards": [
+        "canonical_bd_rate_lt_minus10",
+        "pchip_bd_rate_lt_minus10",
+        "bd_quality_nonnegative",
+        "worst_qp_gap_ge_minus0_5pp"
+      ],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        -0.78125,
+        -2.34375,
+        -1.26953125,
+        -2.05078125,
+        -0.48828125
+      ],
+      "same_qp_rate_delta_pct": [
+        -12.797275429767874,
+        -9.79560518731013,
+        -6.353942831952642,
+        -3.883458315170607,
+        -1.9049934009244707
+      ]
+    },
+    {
+      "codec": "h264",
+      "seed": 303402,
+      "backbone": "swin3d_t",
+      "bd_rate_pct": -14.420678372274477,
+      "pchip_bd_rate_pct": -16.608533757124714,
+      "bd_quality_pp": 4.202162666524909,
+      "ci_lo": -16.834271859233432,
+      "ci_hi": -12.00700948546885,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": true,
+      "failed_guards": [],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        0.390625,
+        1.953125,
+        2.63671875,
+        5.56640625,
+        4.296875
+      ],
+      "same_qp_rate_delta_pct": [
+        -12.570379477526616,
+        -9.713217509561023,
+        -6.278407828247323,
+        -3.795469322049194,
+        -1.8936433927886243
+      ]
+    },
+    {
+      "codec": "h264",
+      "seed": 303402,
+      "backbone": "r3d_18",
+      "bd_rate_pct": 2.3915984601662776,
+      "pchip_bd_rate_pct": 3.508213670829542,
+      "bd_quality_pp": -0.6682272892676004,
+      "ci_lo": -0.9041694377080033,
+      "ci_hi": 5.5470292967839665,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": false,
+      "failed_guards": [
+        "canonical_bd_rate_lt_minus10",
+        "pchip_bd_rate_lt_minus10",
+        "bd_quality_nonnegative",
+        "worst_qp_gap_ge_minus0_5pp"
+      ],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        -0.78125,
+        -2.63671875,
+        -1.5625,
+        -2.1484375,
+        -0.9765625
+      ],
+      "same_qp_rate_delta_pct": [
+        -12.570379477526616,
+        -9.713217509561023,
+        -6.278407828247323,
+        -3.795469322049194,
+        -1.8936433927886243
+      ]
+    },
+    {
+      "codec": "h264",
+      "seed": 303403,
+      "backbone": "swin3d_t",
+      "bd_rate_pct": -14.668756704497376,
+      "pchip_bd_rate_pct": -16.552683985832854,
+      "bd_quality_pp": 4.25378927823378,
+      "ci_lo": -17.10056228307445,
+      "ci_hi": -12.122459348581879,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": true,
+      "failed_guards": [],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        0.68359375,
+        1.7578125,
+        3.02734375,
+        5.46875,
+        3.80859375
+      ],
+      "same_qp_rate_delta_pct": [
+        -12.837443280828687,
+        -9.797595162438155,
+        -6.3887964196725715,
+        -3.870813190410638,
+        -1.935979927560838
+      ]
+    },
+    {
+      "codec": "h264",
+      "seed": 303403,
+      "backbone": "r3d_18",
+      "bd_rate_pct": 2.018566860292137,
+      "pchip_bd_rate_pct": 3.1451318392925733,
+      "bd_quality_pp": -0.5938665132004857,
+      "ci_lo": -1.2908259054452285,
+      "ci_hi": 5.1915282544439645,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": false,
+      "failed_guards": [
+        "canonical_bd_rate_lt_minus10",
+        "pchip_bd_rate_lt_minus10",
+        "bd_quality_nonnegative",
+        "worst_qp_gap_ge_minus0_5pp"
+      ],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        -0.78125,
+        -2.63671875,
+        -1.46484375,
+        -2.05078125,
+        -0.87890625
+      ],
+      "same_qp_rate_delta_pct": [
+        -12.837443280828687,
+        -9.797595162438155,
+        -6.3887964196725715,
+        -3.870813190410638,
+        -1.935979927560838
+      ]
+    },
+    {
+      "codec": "h265",
+      "seed": 303401,
+      "backbone": "swin3d_t",
+      "bd_rate_pct": -11.408441635752597,
+      "pchip_bd_rate_pct": -12.71752545418269,
+      "bd_quality_pp": 4.85408957543332,
+      "ci_lo": -13.424589720824393,
+      "ci_hi": -9.429143128720543,
+      "confidence": 0.975,
+      "finite_draws": 5000,
+      "point_passes": true,
+      "failed_guards": [],
+      "primary": true,
+      "same_qp_accuracy_delta_pp": [
+        0.78125,
+        2.63671875,
+        3.22265625,
+        5.95703125,
+        5.2734375
+      ],
+      "same_qp_rate_delta_pct": [
+        -11.736400982763296,
+        -8.157241208343823,
+        -5.0515486422366145,
+        -2.3508994294876184,
+        -0.871599994899197
+      ]
+    },
+    {
+      "codec": "h265",
+      "seed": 303401,
+      "backbone": "r3d_18",
+      "bd_rate_pct": 2.112649245222853,
+      "pchip_bd_rate_pct": 2.225392710515689,
+      "bd_quality_pp": -0.6534731938563066,
+      "ci_lo": -0.7395825496553526,
+      "ci_hi": 5.131607159691338,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": false,
+      "failed_guards": [
+        "canonical_bd_rate_lt_minus10",
+        "pchip_bd_rate_lt_minus10",
+        "bd_quality_nonnegative",
+        "worst_qp_gap_ge_minus0_5pp"
+      ],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        -0.68359375,
+        -1.46484375,
+        -2.9296875,
+        -1.66015625,
+        -1.07421875
+      ],
+      "same_qp_rate_delta_pct": [
+        -11.736400982763296,
+        -8.157241208343823,
+        -5.0515486422366145,
+        -2.3508994294876184,
+        -0.871599994899197
+      ]
+    },
+    {
+      "codec": "h265",
+      "seed": 303402,
+      "backbone": "swin3d_t",
+      "bd_rate_pct": -11.61667282152743,
+      "pchip_bd_rate_pct": -13.005580168072267,
+      "bd_quality_pp": 4.978168985365496,
+      "ci_lo": -13.369963432412254,
+      "ci_hi": -9.875778984290136,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": true,
+      "failed_guards": [],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        0.78125,
+        2.734375,
+        3.515625,
+        6.0546875,
+        5.2734375
+      ],
+      "same_qp_rate_delta_pct": [
+        -11.674188188730605,
+        -8.161530920965454,
+        -5.008552874577921,
+        -2.357470470471934,
+        -0.8627646725556715
+      ]
+    },
+    {
+      "codec": "h265",
+      "seed": 303402,
+      "backbone": "r3d_18",
+      "bd_rate_pct": 2.431783800331888,
+      "pchip_bd_rate_pct": 2.1403475142921056,
+      "bd_quality_pp": -0.6343273601396264,
+      "ci_lo": -0.47255471038434854,
+      "ci_hi": 5.48189764783485,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": false,
+      "failed_guards": [
+        "canonical_bd_rate_lt_minus10",
+        "pchip_bd_rate_lt_minus10",
+        "bd_quality_nonnegative",
+        "worst_qp_gap_ge_minus0_5pp"
+      ],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        -0.9765625,
+        -1.07421875,
+        -3.22265625,
+        -1.66015625,
+        -1.171875
+      ],
+      "same_qp_rate_delta_pct": [
+        -11.674188188730605,
+        -8.161530920965454,
+        -5.008552874577921,
+        -2.357470470471934,
+        -0.8627646725556715
+      ]
+    },
+    {
+      "codec": "h265",
+      "seed": 303403,
+      "backbone": "swin3d_t",
+      "bd_rate_pct": -11.364024042646903,
+      "pchip_bd_rate_pct": -12.7260742726906,
+      "bd_quality_pp": 4.854982672490926,
+      "ci_lo": -13.140756321765524,
+      "ci_hi": -9.609862481377704,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": true,
+      "failed_guards": [],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        0.68359375,
+        2.63671875,
+        3.22265625,
+        5.95703125,
+        5.2734375
+      ],
+      "same_qp_rate_delta_pct": [
+        -11.818392615994721,
+        -8.213759039326373,
+        -5.081114781410534,
+        -2.3793009288531453,
+        -0.8821963093249341
+      ]
+    },
+    {
+      "codec": "h265",
+      "seed": 303403,
+      "backbone": "r3d_18",
+      "bd_rate_pct": 2.111701050755399,
+      "pchip_bd_rate_pct": 2.145826880350171,
+      "bd_quality_pp": -0.6146660961811597,
+      "ci_lo": -0.7664399518118994,
+      "ci_hi": 5.121184785206778,
+      "confidence": 0.95,
+      "finite_draws": 5000,
+      "point_passes": false,
+      "failed_guards": [
+        "canonical_bd_rate_lt_minus10",
+        "pchip_bd_rate_lt_minus10",
+        "bd_quality_nonnegative",
+        "worst_qp_gap_ge_minus0_5pp"
+      ],
+      "primary": false,
+      "same_qp_accuracy_delta_pp": [
+        -0.78125,
+        -1.26953125,
+        -3.02734375,
+        -1.7578125,
+        -0.9765625
+      ],
+      "same_qp_rate_delta_pct": [
+        -11.818392615994721,
+        -8.213759039326373,
+        -5.081114781410534,
+        -2.3793009288531453,
+        -0.8821963093249341
+      ]
+    }
+  ],
+  "fixed_comparisons_descriptive": {
+    "h264": {
+      "swin3d_t": {
+        "bd_rate_pct": -1.863047975592269,
+        "pchip_bd_rate_pct": -1.7868562701828523,
+        "bd_quality_pp": 0.3655051087783771,
+        "same_qp_gap_pp": [
+          -1.26953125,
+          -1.953125,
+          -2.9296875,
+          -1.171875,
+          -1.953125
+        ],
+        "same_qp_rate_pct": [
+          -17.598543599420168,
+          -14.777311630240419,
+          -10.585513062045282,
+          -6.5184564377208325,
+          -3.382302424482264
+        ],
+        "quality_monotone_by_rate": {
+          "anchor": true,
+          "adaptive": true
+        },
+        "guards": {
+          "canonical_bd_rate_lt_minus10": false,
+          "pchip_bd_rate_lt_minus10": false,
+          "bd_quality_nonnegative": true,
+          "worst_qp_gap_ge_minus0_5pp": false,
+          "same_qp_rate_nonincrease": true
+        },
+        "point_passes": false,
+        "ci": null,
+        "screen_passes": false,
+        "target_confirmed": false
+      },
+      "r3d_18": {
+        "bd_rate_pct": 4.680698590186272,
+        "pchip_bd_rate_pct": 6.117694891892572,
+        "bd_quality_pp": -1.21482777568033,
+        "same_qp_gap_pp": [
+          -2.24609375,
+          -4.6875,
+          -2.34375,
+          -3.515625,
+          -1.953125
+        ],
+        "same_qp_rate_pct": [
+          -17.598543599420168,
+          -14.777311630240419,
+          -10.585513062045282,
+          -6.5184564377208325,
+          -3.382302424482264
+        ],
+        "quality_monotone_by_rate": {
+          "anchor": true,
+          "adaptive": true
+        },
+        "guards": {
+          "canonical_bd_rate_lt_minus10": false,
+          "pchip_bd_rate_lt_minus10": false,
+          "bd_quality_nonnegative": false,
+          "worst_qp_gap_ge_minus0_5pp": false,
+          "same_qp_rate_nonincrease": true
+        },
+        "point_passes": false,
+        "ci": null,
+        "screen_passes": false,
+        "target_confirmed": false
+      }
+    },
+    "h265": {
+      "swin3d_t": {
+        "bd_rate_pct": -1.5132007585928364,
+        "pchip_bd_rate_pct": -0.7740666580748541,
+        "bd_quality_pp": 0.5147062226747591,
+        "same_qp_gap_pp": [
+          -1.7578125,
+          -2.1484375,
+          -2.9296875,
+          -3.7109375,
+          0.78125
+        ],
+        "same_qp_rate_pct": [
+          -16.809612870946445,
+          -13.36527608289806,
+          -8.656836318325855,
+          -4.214568338582869,
+          -1.3650421211088948
+        ],
+        "quality_monotone_by_rate": {
+          "anchor": true,
+          "adaptive": true
+        },
+        "guards": {
+          "canonical_bd_rate_lt_minus10": false,
+          "pchip_bd_rate_lt_minus10": false,
+          "bd_quality_nonnegative": true,
+          "worst_qp_gap_ge_minus0_5pp": false,
+          "same_qp_rate_nonincrease": true
+        },
+        "point_passes": false,
+        "ci": null,
+        "screen_passes": false,
+        "target_confirmed": false
+      },
+      "r3d_18": {
+        "bd_rate_pct": 3.640048680561958,
+        "pchip_bd_rate_pct": 4.333811788870647,
+        "bd_quality_pp": -1.3633715513685962,
+        "same_qp_gap_pp": [
+          -0.390625,
+          -3.02734375,
+          -4.98046875,
+          -4.00390625,
+          -3.125
+        ],
+        "same_qp_rate_pct": [
+          -16.809612870946445,
+          -13.36527608289806,
+          -8.656836318325855,
+          -4.214568338582869,
+          -1.3650421211088948
+        ],
+        "quality_monotone_by_rate": {
+          "anchor": true,
+          "adaptive": true
+        },
+        "guards": {
+          "canonical_bd_rate_lt_minus10": false,
+          "pchip_bd_rate_lt_minus10": false,
+          "bd_quality_nonnegative": false,
+          "worst_qp_gap_ge_minus0_5pp": false,
+          "same_qp_rate_nonincrease": true
+        },
+        "point_passes": false,
+        "ci": null,
+        "screen_passes": false,
+        "target_confirmed": false
+      }
+    }
+  },
+  "action_counts": {
+    "303401": {
+      "h264": {
+        "6": 1129,
+        "11": 1486,
+        "0": 1888,
+        "5": 528,
+        "4": 31,
+        "8": 11,
+        "2": 29,
+        "3": 11,
+        "10": 5,
+        "1": 2
+      },
+      "h265": {
+        "11": 1452,
+        "5": 545,
+        "0": 1855,
+        "6": 1186,
+        "4": 5,
+        "2": 31,
+        "1": 8,
+        "8": 23,
+        "3": 10,
+        "10": 5
+      }
+    },
+    "303402": {
+      "h264": {
+        "6": 1069,
+        "11": 1431,
+        "0": 1906,
+        "5": 444,
+        "2": 62,
+        "4": 106,
+        "8": 73,
+        "3": 4,
+        "7": 7,
+        "1": 2,
+        "10": 16
+      },
+      "h265": {
+        "11": 1382,
+        "5": 523,
+        "0": 1855,
+        "6": 1131,
+        "3": 5,
+        "4": 74,
+        "1": 10,
+        "8": 89,
+        "7": 6,
+        "2": 32,
+        "10": 13
+      }
+    },
+    "303403": {
+      "h264": {
+        "6": 1138,
+        "11": 1491,
+        "0": 1891,
+        "5": 512,
+        "4": 88
+      },
+      "h265": {
+        "11": 1447,
+        "5": 557,
+        "0": 1845,
+        "6": 1209,
+        "4": 51,
+        "3": 10,
+        "2": 1
+      }
+    }
+  },
+  "shards": [
+    {
+      "shard": 0,
+      "account": "hieusunday0412",
+      "sources": 256,
+      "status": "complete",
+      "runtime_hours": 4.530371290555555,
+      "started_utc": "2026-10-12T12:11:07.368296+00:00",
+      "finished_utc": "2026-10-12T16:42:56.704942+00:00",
+      "primary_points": {
+        "h264": {
+          "bd_rate_pct": -16.491297324351716,
+          "pchip_bd_rate_pct": -16.972574328172474,
+          "bd_quality_pp": 4.530329612935647,
+          "same_qp_gap_pp": [
+            1.171875,
+            2.34375,
+            3.125,
+            4.296875,
+            5.078125
+          ],
+          "same_qp_rate_pct": [
+            -13.278202760227986,
+            -10.218053987708075,
+            -6.444552780462698,
+            -3.969406932783781,
+            -1.8528258285742671
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        },
+        "h265": {
+          "bd_rate_pct": -12.036648982815745,
+          "pchip_bd_rate_pct": -12.479341142085431,
+          "bd_quality_pp": 4.919993499949155,
+          "same_qp_gap_pp": [
+            0.390625,
+            2.34375,
+            3.515625,
+            5.859375,
+            3.515625
+          ],
+          "same_qp_rate_pct": [
+            -12.30229124336808,
+            -8.618187907015573,
+            -5.162849512431322,
+            -2.0531924281650404,
+            -0.8150742700978597
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        }
+      }
+    },
+    {
+      "shard": 1,
+      "account": "dieulinhh",
+      "sources": 256,
+      "status": "complete",
+      "runtime_hours": 5.084119608888888,
+      "started_utc": "2026-10-12T04:54:36.451068+00:00",
+      "finished_utc": "2026-10-12T09:59:39.281660+00:00",
+      "primary_points": {
+        "h264": {
+          "bd_rate_pct": -20.465510338088144,
+          "pchip_bd_rate_pct": -22.83382386648211,
+          "bd_quality_pp": 5.612234349799197,
+          "same_qp_gap_pp": [
+            1.5625,
+            3.515625,
+            3.515625,
+            8.59375,
+            3.515625
+          ],
+          "same_qp_rate_pct": [
+            -12.639828609595959,
+            -9.809465646255966,
+            -6.484368831523691,
+            -4.15773035805076,
+            -1.9722175588463786
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        },
+        "h265": {
+          "bd_rate_pct": -11.180214413807665,
+          "pchip_bd_rate_pct": -11.31997493893522,
+          "bd_quality_pp": 3.9043911509156795,
+          "same_qp_gap_pp": [
+            0.78125,
+            1.5625,
+            2.34375,
+            5.46875,
+            4.6875
+          ],
+          "same_qp_rate_pct": [
+            -10.803379834019234,
+            -7.747290404918516,
+            -5.314769172957257,
+            -2.3915582096334265,
+            -0.9095309888394909
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        }
+      }
+    },
+    {
+      "shard": 2,
+      "account": "ngynanhthuw",
+      "sources": 256,
+      "status": "complete",
+      "runtime_hours": 5.161245488333333,
+      "started_utc": "2026-10-12T04:54:50.192799+00:00",
+      "finished_utc": "2026-10-12T10:04:30.676557+00:00",
+      "primary_points": {
+        "h264": {
+          "bd_rate_pct": -10.336895458892581,
+          "pchip_bd_rate_pct": -12.407508330326806,
+          "bd_quality_pp": 3.2925446878400315,
+          "same_qp_gap_pp": [
+            0.390625,
+            0.390625,
+            3.125,
+            3.90625,
+            3.125
+          ],
+          "same_qp_rate_pct": [
+            -13.102266452872701,
+            -9.262489885390735,
+            -5.920044970923666,
+            -3.695770091272832,
+            -1.9346802826969878
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        },
+        "h265": {
+          "bd_rate_pct": -10.008442805032614,
+          "pchip_bd_rate_pct": -13.580739337071376,
+          "bd_quality_pp": 5.010175989064694,
+          "same_qp_gap_pp": [
+            0.78125,
+            2.34375,
+            4.6875,
+            6.640625,
+            5.078125
+          ],
+          "same_qp_rate_pct": [
+            -11.770907932923292,
+            -7.908469838876031,
+            -4.964700382899445,
+            -2.307684893348372,
+            -0.8431963919262819
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        }
+      }
+    },
+    {
+      "shard": 3,
+      "account": "dngbolm",
+      "sources": 256,
+      "status": "complete",
+      "runtime_hours": 4.786719342222223,
+      "started_utc": "2026-10-12T12:45:38.093084+00:00",
+      "finished_utc": "2026-10-12T17:32:50.282716+00:00",
+      "primary_points": {
+        "h264": {
+          "bd_rate_pct": -10.924341941315618,
+          "pchip_bd_rate_pct": -12.003393323178493,
+          "bd_quality_pp": 3.1128384787047323,
+          "same_qp_gap_pp": [
+            -0.390625,
+            0.390625,
+            1.5625,
+            4.296875,
+            3.90625
+          ],
+          "same_qp_rate_pct": [
+            -12.172673061965256,
+            -9.918130719531115,
+            -6.577333009082087,
+            -3.7081302315005615,
+            -1.8556348283369717
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        },
+        "h265": {
+          "bd_rate_pct": -11.659148381090123,
+          "pchip_bd_rate_pct": -13.317827359600146,
+          "bd_quality_pp": 5.615141312319437,
+          "same_qp_gap_pp": [
+            1.171875,
+            4.296875,
+            2.34375,
+            5.859375,
+            7.8125
+          ],
+          "same_qp_rate_pct": [
+            -12.085460647106261,
+            -8.375850754681323,
+            -4.763721837869461,
+            -2.6465947525054045,
+            -0.9179722244560318
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        }
+      }
+    }
+  ]
+}

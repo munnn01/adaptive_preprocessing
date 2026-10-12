@@ -1,0 +1,125 @@
+[
+  {
+    "file": "checkpoints/v34_r1/controller_303401.pth",
+    "seed": 303401,
+    "role": "LAST",
+    "experiment": "ar_ot",
+    "bytes": 63923,
+    "parameter_count": 8661,
+    "action_count": 13,
+    "condition_count": 9,
+    "epochs": 30,
+    "learning_rate": 0.001,
+    "train_count": 48,
+    "cal_count": 16,
+    "source_commit": "df1fa0dd712e5d6c7046a24b18cdd1a306a2de59",
+    "codec_backpropagation": false,
+    "task_models": {
+      "ar": {
+        "name": "swin3d_t",
+        "state_sha256": "1203c237fc4fee53917f852de56469dfa31d191c00ef54ee8d33461727ebd393"
+      },
+      "od": {
+        "name": "resnet50",
+        "state_sha256": "c4616e10536fb767f901700c621bb851a10259b6ed90f3af0e4596d5a6886533",
+        "transform": {
+          "min_size": [
+            320
+          ],
+          "max_size": 640
+        },
+        "ot_transform": {
+          "min_size": [
+            960
+          ],
+          "max_size": 960
+        },
+        "detections_per_img": 300
+      }
+    },
+    "training_history_length": 30,
+    "checkpoint_sha256": "c4622dbd701df88444344ec908263ccebcbbd28da40c9812c1b86749169c1577"
+  },
+  {
+    "file": "checkpoints/v34_r1/controller_303402.pth",
+    "seed": 303402,
+    "role": "LAST",
+    "experiment": "ar_ot",
+    "bytes": 63923,
+    "parameter_count": 8661,
+    "action_count": 13,
+    "condition_count": 9,
+    "epochs": 30,
+    "learning_rate": 0.001,
+    "train_count": 48,
+    "cal_count": 16,
+    "source_commit": "df1fa0dd712e5d6c7046a24b18cdd1a306a2de59",
+    "codec_backpropagation": false,
+    "task_models": {
+      "ar": {
+        "name": "swin3d_t",
+        "state_sha256": "1203c237fc4fee53917f852de56469dfa31d191c00ef54ee8d33461727ebd393"
+      },
+      "od": {
+        "name": "resnet50",
+        "state_sha256": "c4616e10536fb767f901700c621bb851a10259b6ed90f3af0e4596d5a6886533",
+        "transform": {
+          "min_size": [
+            320
+          ],
+          "max_size": 640
+        },
+        "ot_transform": {
+          "min_size": [
+            960
+          ],
+          "max_size": 960
+        },
+        "detections_per_img": 300
+      }
+    },
+    "training_history_length": 30,
+    "checkpoint_sha256": "5186940d2d687325cea6caba2cde0a69fa6182bba92df949e39753d53f4f77cc"
+  },
+  {
+    "file": "checkpoints/v34_r1/controller_303403.pth",
+    "seed": 303403,
+    "role": "LAST",
+    "experiment": "ar_ot",
+    "bytes": 63923,
+    "parameter_count": 8661,
+    "action_count": 13,
+    "condition_count": 9,
+    "epochs": 30,
+    "learning_rate": 0.001,
+    "train_count": 48,
+    "cal_count": 16,
+    "source_commit": "df1fa0dd712e5d6c7046a24b18cdd1a306a2de59",
+    "codec_backpropagation": false,
+    "task_models": {
+      "ar": {
+        "name": "swin3d_t",
+        "state_sha256": "1203c237fc4fee53917f852de56469dfa31d191c00ef54ee8d33461727ebd393"
+      },
+      "od": {
+        "name": "resnet50",
+        "state_sha256": "c4616e10536fb767f901700c621bb851a10259b6ed90f3af0e4596d5a6886533",
+        "transform": {
+          "min_size": [
+            320
+          ],
+          "max_size": 640
+        },
+        "ot_transform": {
+          "min_size": [
+            960
+          ],
+          "max_size": 960
+        },
+        "detections_per_img": 300
+      }
+    },
+    "training_history_length": 30,
+    "checkpoint_sha256": "d8c78f2bb1fc5a20883b5d81013555fb1ec66d489cf08648ae0533c8e4efaf4b"
+  }
+]

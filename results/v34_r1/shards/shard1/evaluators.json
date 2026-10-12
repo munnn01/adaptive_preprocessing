@@ -1,0 +1,28 @@
+{
+  "task_models": {
+    "ar": {
+      "name": "swin3d_t",
+      "state_sha256": "1203c237fc4fee53917f852de56469dfa31d191c00ef54ee8d33461727ebd393"
+    },
+    "od": {
+      "name": "resnet50",
+      "state_sha256": "c4616e10536fb767f901700c621bb851a10259b6ed90f3af0e4596d5a6886533",
+      "transform": {
+        "min_size": [
+          320
+        ],
+        "max_size": 640
+      },
+      "ot_transform": {
+        "min_size": [
+          960
+        ],
+        "max_size": 960
+      },
+      "detections_per_img": 300
+    }
+  },
+  "transfer_ar": "66d2c433c3a0aed19dfb758d86005af130f3ac19e5f3b2cc4ceb0996a24929a6",
+  "transfer_od": null,
+  "tracker": "supervision==0.27.0 ByteTrack"
+}

@@ -23,6 +23,8 @@ from .rateaware import RateAwarePreprocessor, load_preprocessor, semantic_protec
 from .profiles import ProfilePreprocessor
 
 ROOT = Path(__file__).resolve().parents[1]
+RANKING_SCHEMAS = ('adaptive-vcm-ranking-v4', 'adaptive-vcm-utility-v5', 'adaptive-vcm-portfolio-v6')
+SPATIAL_SCHEMAS = ('adaptive-vcm-motion-v7', 'adaptive-vcm-semantic-v8', 'adaptive-vcm-conditional-v9')
 
 
 def write_json(path: Path, value) -> None:
@@ -44,6 +46,16 @@ def code_manifest() -> dict:
 def choose_stream(clip, protection, task, codec, cfg, teachers, source_predictions, learned=None,
                   *, learned_mask=None, components=False):
     """Run encoder-only selection. There is no ground-truth or evaluator input."""
+    if getattr(learned, 'schema', None) in SPATIAL_SCHEMAS:
+        from .motion_selection import choose_motion_stream
+        return choose_motion_stream(clip,protection,task,codec,cfg,teachers,source_predictions,
+                                    learned,learned_mask=learned_mask,components=components)
+    if getattr(learned, 'schema', None) in RANKING_SCHEMAS:
+        if task != 'ar':
+            raise ValueError('ranking recipe is registered for AR only')
+        from .rank_selection import choose_rank_stream
+        return choose_rank_stream(clip, protection, codec, cfg, teachers, source_predictions,
+                                  learned, learned_mask=learned_mask, components=components)
     candidates = make_candidates(clip, protection, task, codec.qp, cfg[f"{task}_candidates"])
     selected_profile = None
     if task == "od" and not np.any(source_predictions[0]["scores"] >= cfg["od_score_threshold"]):
@@ -172,6 +184,19 @@ def run(args) -> dict:
     validate_config(cfg)
     if args.split not in ("dev", "test") or args.count < 1 or args.bootstrap is not None and args.bootstrap < 0:
         raise ValueError("invalid evaluation plan")
+    early_state, early_model = None, None
+    if any(cfg.get(f'{task}_mode') == 'motion_spatial' for task in ('ar', 'od')):
+        if not args.checkpoint:
+            raise ValueError('V28 requires a trained motion checkpoint')
+        early_state = torch.load(args.checkpoint, map_location='cpu', weights_only=True)
+        expected_schema = ('adaptive-vcm-conditional-v9' if cfg.get('v30_variant') is not None else
+                           'adaptive-vcm-semantic-v8' if cfg.get('v29_variant') is not None else
+                           'adaptive-vcm-motion-v7')
+        if not isinstance(early_state, dict) or early_state.get('schema') != expected_schema:
+            raise ValueError('V28/V29 requires a matching trained spatial checkpoint')
+        if early_state.get('training_config') != cfg:
+            raise ValueError('V28 checkpoint/evaluation configuration mismatch')
+        early_model = load_preprocessor(early_state, args.task)
     draws = cfg["bootstrap_draws"] if args.bootstrap is None else args.bootstrap
     if args.out.exists() and any(args.out.iterdir()):
         raise ValueError("output must be empty; refusing to mix experiment evidence")
@@ -193,10 +218,10 @@ def run(args) -> dict:
         evaluators = {cfg["od_evaluator"]: DetectionAnalyzer(cfg["od_evaluator"], device)}
     learned = None
     if args.checkpoint:
-        state = torch.load(args.checkpoint, map_location=device, weights_only=True)
-        if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema) and state.get("training_config") != cfg:
+        state = early_state if early_state is not None else torch.load(args.checkpoint, map_location=device, weights_only=True)
+        if state.get("schema") in (RateAwarePreprocessor.schema, ProfilePreprocessor.schema, *SPATIAL_SCHEMAS, *RANKING_SCHEMAS) and state.get("training_config") != cfg:
             raise ValueError("checkpoint/evaluation configuration mismatch")
-        learned = load_preprocessor(state, args.task).to(device)
+        learned = (early_model if early_model is not None else load_preprocessor(state, args.task)).to(device)
         learned.eval()
     ablate = getattr(args, "ablate_learned", False)
     if ablate and learned is None:
@@ -214,6 +239,24 @@ def run(args) -> dict:
                 "ar_guard_rule": "anchor_relative_v2" if args.task == "ar" else None,
                 "component_scope": "learned_raw is ungated; learned_guarded uses identity fallback; component curves have no bootstrap CI"}
     write_json(args.out / "manifest.json", manifest)
+    if getattr(learned, 'schema', None) in RANKING_SCHEMAS:
+        manifest['component_scope'] = ('controls and static_adaptive use identical fixed controls; '
+                                      'static_adaptive adds TRAIN static topK, adaptive adds learned topK; '
+                                      'bank_oracle is an audit-only upper bound; learned_raw is ungated')
+        manifest['proposal_budget'] = cfg['rank_top_k']
+        write_json(args.out / 'manifest.json', manifest)
+    if getattr(learned,'schema',None) in SPATIAL_SCHEMAS:
+        manifest['component_scope']='same controls; three neural proposals in primary; same-K TRAIN static and full profile oracle are audit arms'
+        manifest['proposal_budget']=3
+        manifest['motion_source']='RGB optical-flow proxy; no codec motion vectors'
+        if cfg.get('v29_variant'):
+            manifest['semantic_variant']=cfg['v29_variant']
+            manifest['admission_policy']=getattr(learned,'admission_policy',None)
+        if cfg.get('v30_variant'):
+            manifest.update(conditional_variant=cfg['v30_variant'],
+                profile_registry=learned.profile_registry,baseline_static_orders=learned.baseline_static_orders,
+                gate_threshold=.5,model_parameters=sum(p.numel() for p in learned.parameters()))
+        write_json(args.out/'manifest.json',manifest)
     all_rows, geometry = {codec: [] for codec in args.codecs}, {}
     component_rows = {codec: [] for codec in args.codecs}
     for position, item in enumerate(plan):
@@ -226,14 +269,21 @@ def run(args) -> dict:
             source_predictions = [teacher.probabilities(clip) for teacher in teachers]
             semantic = np.maximum.reduce([normalize_map(teacher.saliency(clip)) for teacher in teachers])
             protection = action_protection(clip, semantic)
-            learned_mask = semantic_protection(semantic) if isinstance(learned, RateAwarePreprocessor) else protection
+            learned_mask = semantic_protection(semantic) if (isinstance(learned, RateAwarePreprocessor)
+                           or getattr(learned, 'schema', None) in (*RANKING_SCHEMAS,*SPATIAL_SCHEMAS)) else protection
         else:
             source_predictions = [teachers[0].predict(clip)]
             source = source_predictions[0]
             protection = boxes_to_mask(*clip.shape[1:3], source["boxes"][source["scores"] >= cfg["od_score_threshold"]])
             learned_mask = protection
+        if getattr(learned,'schema',None) in SPATIAL_SCHEMAS:
+            from .motion_support import build_motion_support
+            learned_mask=build_motion_support(clip,learned_mask,args.task)
         preparation_seconds = time.perf_counter() - preparation_start
         source_hash = hashlib.sha256(clip.tobytes()).hexdigest()
+        if getattr(learned,'schema',None) in SPATIAL_SCHEMAS:
+            if source_hash in learned.train_source_sha256.values():
+                raise ValueError('TRAIN/evaluation source pixel overlap')
         for codec_name in args.codecs:
             for qp in cfg["qps"]:
                 start = time.perf_counter()
@@ -251,6 +301,7 @@ def run(args) -> dict:
                     row = {"id": item["id"], "qp": qp, "codec": codec_name, "arm": arm,
                            "candidate": candidate_name,
                            "source_sha256": source_hash, "coded_bytes": result.coded_bytes,
+                           "source_shape": list(clip.shape),
                            "bpp": reference_bpp(result.coded_bytes, clip.shape),
                            "stream_sha256": hashlib.sha256(result.data).hexdigest(),
                            "source_preparation_seconds": preparation_seconds, "selection_seconds": seconds}
@@ -289,7 +340,8 @@ def run(args) -> dict:
     if ablate:
         for codec, rows in all_rows.items():
             component_results[codec] = {}
-            for arm in ("controls", "learned_guarded", "learned_raw"):
+            arms = sorted({r['arm'] for r in component_rows[codec]})
+            for arm in arms:
                 paired = [r for r in rows if r["arm"] == "anchor"]
                 paired += [{**r, "arm": "adaptive"} for r in component_rows[codec] if r["arm"] == arm]
                 component_results[codec][arm] = (_ar_curves(paired, list(evaluators), cfg["qps"], 0, cfg["seed"]) if args.task == "ar" else
@@ -301,6 +353,45 @@ def run(args) -> dict:
                 "screen_passes": set(args.codecs) == {"h264", "h265"} and all(r["screen_passes"] for models in results.values() for r in models.values()),
                 "target_confirmed": False, "scope": cfg["scope"], "component_results": component_results,
                 "high_qp_diagnostics": high_qp_diagnostics(all_rows, component_rows, cfg, args.task, results, component_results)}
+    if getattr(learned, 'schema', None) in RANKING_SCHEMAS:
+        from .rank_selection import ranking_diagnostics
+        decision['policy_contribution'] = {c: ranking_diagnostics(rows, component_rows[c], cfg['qps'])
+                                           for c, rows in all_rows.items()}
+        decision['proposal_budget'] = {'learned': cfg['rank_top_k'], 'static': cfg['rank_top_k'],
+                                      'bank_oracle': len(learned.action_names) - 1,
+                                      'oracle_scope': 'audit upper bound; unproposed actions excluded from adaptive selection'}
+        if getattr(learned, 'schema', None) in ('adaptive-vcm-utility-v5', 'adaptive-vcm-portfolio-v6'):
+            decision['proposal_budget']['group_static'] = cfg['rank_top_k']
+            decision['policy_fit'] = {'learned_mix': learned.learned_mix,
+                                     'prior_only': learned.learned_mix == 0,
+                                     'utility_target_scope': learned.utility_target_scope,
+                                     'scope': 'TRAIN sourceblocked CV; fixed pixel filter bank'}
+            if getattr(learned, 'schema', None) == 'adaptive-vcm-portfolio-v6':
+                decision['policy_fit']['proposal_origin_scope'] = 'per-point prior_only in selection audit; mixed low/high recipes'
+                decision['policy_fit']['recipes'] = learned.recipes
+    if getattr(learned,'schema',None) in SPATIAL_SCHEMAS:
+        from .motion_selection import motion_contribution
+        decision['policy_contribution']={c:motion_contribution(rows,component_rows[c]) for c,rows in all_rows.items()}
+        decision['proposal_budget']={'learned':3,'static':3,'profile_oracle':12,
+                                    'oracle_scope':'audit-only; primary uses original controls plus three neural pixel-map proposals'}
+        decision['policy_fit']={'scope':'TRAIN measured feasible pixel imitation, fixed final-LAST; no codec-gradient or DEV checkpoint selection',
+                                'motion_source':'RGB optical-flow proxy, not codec motion vectors',
+                                'geometry':'original frame coordinates; no crop metadata or decoder change'}
+        if cfg.get('v29_variant'):
+            decision['policy_fit'].update(variant=cfg['v29_variant'],
+                objective='direct profile expert/alpha supervision and editable RGB imitation with capped measured extra-byte utility',
+                admission_policy=getattr(learned,'admission_policy',None),
+                calibration_scope='C uses disjoint TRAIN sources; policy_unrestricted is the same checkpoint without extra admission')
+        if cfg.get('v30_variant'):
+            decision['proposal_budget'].update(profile_oracle=len(learned.profile_registry),baseline_oracle=12,
+                oracle_scope='audit-only; primary uses original controls plus exactly three conditional neural proposals')
+            decision['policy_fit'].update(variant=cfg['v30_variant'],gate_threshold=.5,
+                objective='balanced admission and positive-only canonical expert/strength supervision with editable RGB and capped actual byte utility',
+                parameter_scope='source-level full clip/image pooled features; offline encoder context',
+                baseline_scope='A/B reuse freshly measured baseline profiles; C additionally measures original V29-A pixels; TRAIN static K3 and DEV oracle audit')
+            from .motion_selection import conditional_selection_diagnostics
+            audit_records=[json.loads(line) for line in (args.out/'selection_audit.jsonl').read_text().splitlines()]
+            decision['conditional_diagnostics']=conditional_selection_diagnostics(audit_records,cfg,args.task)
     write_json(args.out / "summary.json", decision)
     print(json.dumps(decision, indent=2, allow_nan=False), flush=True)
     return decision
@@ -316,7 +407,8 @@ def high_qp_diagnostics(all_rows, components, cfg, task, results, component_resu
                 continue
             anchor = {r["id"]: r for r in rows if r["arm"] == "anchor" and r["qp"] == qp}
             entries = {}
-            for arm in ("adaptive", "controls", "learned_guarded", "learned_raw"):
+            arms = ['adaptive'] + sorted({r['arm'] for r in components[codec]})
+            for arm in arms:
                 trial = [r for r in [*rows, *components[codec]] if r["arm"] == arm and r["qp"] == qp]
                 if not trial:
                     continue

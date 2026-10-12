@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-13",
+  "scope": "curated publication checkout; V34 runtime unchanged",
+  "artifact_sha256_verification": "passed",
+  "paired_row_count": 112640,
+  "bootstrap_comparisons": 12,
+  "bootstrap_draws_per_comparison": 5000,
+  "recomputed_independent_summary": "exactly equals published JSON",
+  "pytest": {"passed": 44, "skipped": 2, "failed": 0},
+  "skipped_reason": "external TrackEval checkout was not configured; no independent OT GT in this study",
+  "tracking_dependency": "supervision==0.27.0",
+  "document_local_links": "passed",
+  "credential_scan": "no matches to local account-pool secrets",
+  "figure": "PNG and SVG visually inspected"
+}

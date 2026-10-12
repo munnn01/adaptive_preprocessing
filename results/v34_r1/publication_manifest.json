@@ -1,0 +1,165 @@
+{
+  "version": "V34-R1",
+  "publication_date": "2026-10-13",
+  "evaluation_source_commit": "282448b0a7e456b2dbea11b310a14be8891de5ea",
+  "controller_source_commit": "df1fa0dd712e5d6c7046a24b18cdd1a306a2de59",
+  "source_scope": "exact evaluated runtime dependency closure; original version-named helpers retained only as dependencies",
+  "runtime_sha256": {
+    "adaptive_vcm/v34/tracking.py": "5b5645e576a34923e7f872fd345e9336ec36e4f1b1eb013469c741d0d7e2079e",
+    "adaptive_vcm/v33ap/sources.py": "c70697678687d45ae145384e68fb61d3a7975b5c284e905defba5fad00805d0f",
+    "adaptive_vcm/v33ap/protocol.py": "c0bc4bb46f06527d45b57488b161a5e7415e1e9aa824d3a04aa2dbd2799095a1",
+    "adaptive_vcm/v32rf/protocol.py": "cde03bc745c4f3f624756e43ae5a481bfde1d530c50b6fe0e4cfbabb3dff6f1a",
+    "adaptive_vcm/v32/codec.py": "2ef726cd2cd84de589c149cf871a5fa86bc58c1b9857fe6af539fbdec0a67512",
+    "adaptive_vcm/v32/transport.py": "e064c71f9ac02314094a99e2b0ff3f52e85422ab53040c8892c6c98db13b3b6c",
+    "adaptive_vcm/v32/roi.py": "04678279b2a5f54732cd1262599f15df49bd253c82fe209a352fadd5652839db",
+    "adaptive_vcm/preprocessing.py": "f914d8d6a2d6f2e2fcb729e81220e0362df3800553b596ac37362bb9e465e428",
+    "adaptive_vcm/__init__.py": "1a52ce2fad798913639d315f6101b81da17604224678efb35cd85353329ebc0c",
+    "adaptive_vcm/v32/__init__.py": "8ab9b6946399d0761ee7428b838daa5fb49d9da72a55802b03badc778bd2200c",
+    "adaptive_vcm/codec.py": "d395e92474fb3ab5e009481d8e5ea447a2d59bb065b48ee6283e19ddd8e3185e",
+    "adaptive_vcm/v32/protocol.py": "374075e4f3b6306e3da98110ffee7368ba0b2f75cd13885f123580bc65fd3397",
+    "adaptive_vcm/data.py": "938630dfb0c53d25b6ba17e6e6e05d6bcd48be86f510de6170d8144eb50b4fcc",
+    "adaptive_vcm/v32rf/__init__.py": "18402d5d01d6da467c74b444613a0a27a1898e3a91f22eaccaf2abe957041370",
+    "adaptive_vcm/v33ap/codec.py": "964206e1f234515d09efa05721198c504998125b3eb3e28f06e1e06ae5e1f81c",
+    "adaptive_vcm/v33ap/__init__.py": "5e976d2e97f5c6882b4f636bc33bc3bde0ac9e68b3b71b9ae07cb2c65cc6cc21",
+    "adaptive_vcm/v32vc/train.py": "63e6b0ef366e5b12aa4883e965717a0c630d042cbdb75ac1e6a22628c19ff99c",
+    "adaptive_vcm/v32vc/virtual.py": "f07374d5f9844be8def12730d09785c5c505f272c3997958670e56cca32fd2ad",
+    "adaptive_vcm/v32vc/model.py": "63e338d41298ecc1d2fde3a72a9bb706ccf58eaf6f33f0b0511c39f7a9ad6bb0",
+    "adaptive_vcm/v32vc/__init__.py": "e41f4fea52d9df68d45712b6ae48254eaf5395be530d6b75f98115b9f2883a6b",
+    "adaptive_vcm/v32vc/geometry.py": "b01d3d28677e0c957b7a8c00977b1ad059ffbe75a499c24a57699b7c91e94714",
+    "adaptive_vcm/v32vc/checkpoint.py": "50df0fa1d03ded2c260c582621652195913be54273f4646895aa0dc03b1dc4ed",
+    "adaptive_vcm/v32/evaluate.py": "2a29b3e05d45ebc25a488d49fdb2c7b2125268af11fbb2ee91afe5cf16c4227a",
+    "adaptive_vcm/v32vc/evaluate.py": "213144d62966d45bbcba1536eb282011948fd9c0718d1e436f69ee9ac4568748",
+    "adaptive_vcm/v32/selection.py": "7b38afe6f9c8611d38efd9dcf0f9f4e1cef6430074b905c2282444cc79f8af8d",
+    "adaptive_vcm/selection.py": "10edfc4618fddbb26be10880c9275ec3c83fde1b8b0154411f29a95fc18b92f2",
+    "adaptive_vcm/v32/baseline.py": "ccad14b59911e92b507090ccefe37b0bc7211cb3073675c457f9d3070ca341fb",
+    "adaptive_vcm/rateaware.py": "d6c143e12b7353265382e8176df39463ce97b04c1b30c8babf8243f62c318cc5",
+    "adaptive_vcm/portfolio_ranking.py": "dfa512bb680487a838a7747459f618ec4efa5936f46117bd586b39ceffa89f0a",
+    "adaptive_vcm/anchor_bank.py": "f8b64f9690ae94c5348266e95b0f7d31dd47793a7e0e85537b45ffa58cd6395e",
+    "adaptive_vcm/stabilized_bank.py": "7ee17a91e29adc10f3b6e3eaf2a15e8dadc978e1724d5d5a2275de363d548acb",
+    "adaptive_vcm/task_bank.py": "8ad8e84825917fe153596236623ee2b65861b5adbdf444077102444ac927e8e1",
+    "adaptive_vcm/utility_ranking.py": "8adc1d70ab949e02cb948eb8d9ffd38ab72cfee7931ecbb423cfd8dbb6139b81",
+    "adaptive_vcm/ranking.py": "6242971ba80e0a41d5073e91fea543f7879b47580da72daaf2babd9970b2a90c",
+    "adaptive_vcm/motion_selection.py": "48acb281cc490fb0ed96959af16d6c858fc7c38aa757616d93f735bef729c678",
+    "adaptive_vcm/conditional_learned.py": "c6ae0def0e25161d982b0c54fe62969e82e2942fdff6eaa9d411470ddd0f55b7",
+    "adaptive_vcm/motion_learned.py": "4fc03991a37764d12d288eedb0282de8c21c9d07c0b4b1c185a5a5d79fd4e970",
+    "adaptive_vcm/learned.py": "fff6e11748bc41d5e626cf21c03896432443dcd005dc966099551e9acecc6377",
+    "adaptive_vcm/train_motion.py": "01f6f25421d9162a6ff4a5369d8e0a7c38989428a4d5f03e79f2324af790a463",
+    "adaptive_vcm/motion_support.py": "0dc2d0c69161e64b4de7438e0eebcfdc3fb0fa20004388e55f203681972ab7d7",
+    "adaptive_vcm/analyzers.py": "e083bb1ccf90d8766eb3c6dbc1fac1e2ce013083237981d814673d5cb8589e3c",
+    "adaptive_vcm/profiles.py": "4091fc966f120858fe6e996343e2cf75212be6924fad2e35c6b84982424d485e",
+    "adaptive_vcm/evaluate.py": "7e6278506517da66d43d5bbf952eb70cdb9dbbcfdd93afa7085ce42c9dcd1e5c",
+    "adaptive_vcm/rank_selection.py": "c8d63a0de7f10a4c45e45e61185cc5e71ce1368169b0d3ceee1fa8c904b33b74",
+    "adaptive_vcm/coco_metrics.py": "058479479bba4393fe54250fab4a3b920c257885e7a225e27b7ebc128c40c9a8",
+    "adaptive_vcm/legacy_bd.py": "38d373f13366cb2397cd572d294dda4bd57dd71841fc353aa0b50776b2ae6487",
+    "adaptive_vcm/metrics.py": "62f1dd86f4fef4c0a0a25aa9e84106a1676ee88593ce1924b47a80380288628d",
+    "adaptive_vcm/v32/tracking.py": "b5b5dfbbd5bdef02c553d3c76fd00acacb45d9ded076dc933ce23983b867e2ae",
+    "adaptive_vcm/v34/__init__.py": "9050ac7ebf4a07102372d4e3c62e8202f137eae5e7f7c882af670d318b064180",
+    "adaptive_vcm/v34/tasks.py": "801a2dbeeae8541f301c397c498e2988e8e0dbcb5cc061ab819bac24947d587e",
+    "adaptive_vcm/v33ap/tasks.py": "e0fb2890906e4e4a662abb5b693b2a6ad72bededeb5a2f65ab81b28f9323f5e7",
+    "adaptive_vcm/v32rf/swin.py": "7300434a9866d7c891b07d4faeaee258037ead05ceb9f5108c15d93288756452",
+    "adaptive_vcm/v34/sources.py": "da52379321d4686879dc5faababf4a67aa58126976ee8117568a188ee1cd2e48",
+    "adaptive_vcm/v34/runner.py": "829a7073effb80752eef5197ecab65ee4a775ce943a8ac0a210777aaf05dc345",
+    "adaptive_vcm/v34/learning.py": "9f8368e6f3d587c5939bcda800d25ad65c85d07c9a08873fa416a7d8ab21dfe7",
+    "adaptive_vcm/v34/evaluation.py": "e2a59847bc2f2a421bbb1483c2fb176de1d30455ffa8f1c85ba7724705e325d2",
+    "adaptive_vcm/v34/preprocessing.py": "234023daf554f88968439adb81e616c17cf743785e3bb229eeb3111719d52598",
+    "adaptive_vcm/v34/protocol.py": "2ead637e37a2f53ce2bd1b44a8e01e4f4da0de5caefb93ead60a31616acc16a1",
+    "adaptive_vcm/v33ap/evaluate.py": "523a1e1749491e03aad3dea8a05479964a87f2911603f0e2ce6b18fd339e87bd",
+    "adaptive_vcm/v33ap/selection.py": "352e2b153b951f14356cfd964fdc69c0c18cb24221b604e625c8809029d70efa",
+    "adaptive_vcm/v33ap/receiver.py": "d5d70c877ab1447a1395493c3e1d53161139256f17fb828731cf21664070da0e",
+    "adaptive_vcm/v33ap/checkpoint.py": "861cb21b1effa5d6d32ae42db0ae42d00f57c1357deade7dc32361227e5d9771",
+    "adaptive_vcm/v33ap/model.py": "4d78cf88425a4023be2af8434645ac917570fcb8cab528d709dc7541bf28b8e5",
+    "adaptive_vcm/v34/checkpoint.py": "2fdce0c4072cc4de9deb68744a22c28d9e9ebc4ae2369ebde017664c56f82992",
+    "adaptive_vcm/v34/model.py": "128665b131bab4133d85bda3d98ed7ed197a3552b64db4e3889f767cc99c7ee3",
+    "adaptive_vcm/v34/holdout.py": "680da11dc78437ea1f435a93eadd6e18eda305f0b30b9870f3a09d8636747bbf"
+  },
+  "compressed_files": {
+    "results/v34_r1/shards/shard0/test_rows.json.gz": {
+      "sha256": "21c78dd9d3a02cfba14ad220107e43dea03f2973c013798be4b07ea14fb03890",
+      "unpacked_sha256": "d9d7b1377b447cf3a8a33f2a25bbaa05d2ab8e9679b2dec097aa9c614a84c46c",
+      "unpacked_bytes": 87392136,
+      "bytes": 7622696
+    },
+    "results/v34_r1/shards/shard1/test_rows.json.gz": {
+      "sha256": "33719c170d60b1506f0ff71c905713c8b3994c963247a99c955ad8c490607a62",
+      "unpacked_sha256": "e4921d0bd040be751ac58323e482b10b60ee76ffe55d9d6d32f8cc333fb7f952",
+      "unpacked_bytes": 87516634,
+      "bytes": 7592761
+    },
+    "results/v34_r1/shards/shard2/test_rows.json.gz": {
+      "sha256": "d146f05b472341227a89070ae64342fcb823b78d81812cd251acf7c16d204c00",
+      "unpacked_sha256": "d1889a20ebb2d4028e9ac93c151b6f6574fec67ccfa5bca46975274961aadc6e",
+      "unpacked_bytes": 87559757,
+      "bytes": 7571070
+    },
+    "results/v34_r1/shards/shard3/test_rows.json.gz": {
+      "sha256": "bdcb8d93b0cc9b21deacc2a6eea49fb04c0a6f24ac3dffee1147b108daacd8d3",
+      "unpacked_sha256": "997b9d12e8f2eaa5184aa83d0a0d8ca3378ca9ba9d101daef1fde2cd4d02cf02",
+      "unpacked_bytes": 87416324,
+      "bytes": 7593207
+    }
+  },
+  "shard_original_sha256": {
+    "0": {
+      "complete.json": "ce785d4df895724bea342a9b1d1c294c42f42d8169f876cfe3e3c46524997b27",
+      "selection.json": "9559cea964eb745aab6851699e9a4c1372c5450a4e81afadea3929c9621c83a8",
+      "cohorts.json": "45f293943830897fdfedb33cffd4d775da7891ca802a10afa2e23fd06a262592",
+      "protocol.json": "ea0786bf0df3cb755ddf5cd19c5525221946368214801b49dbc3f4a6c1e6d407",
+      "evaluators.json": "92e8da9d9f783ce5faa86405337238bdcf51085c01c2d1528526c7d8be289b7f",
+      "source_inventory.json": "a0364a219652dfa874f03751c68ca2a6cdb6bdd181fe39a686098c42ec46e235",
+      "test_summary.json": "ade6920d54f5d87ec52e9aa035a4c87d6980279944ef72900748e9361aeea0d9",
+      "test_rows.json": "d9d7b1377b447cf3a8a33f2a25bbaa05d2ab8e9679b2dec097aa9c614a84c46c"
+    },
+    "1": {
+      "complete.json": "4bd2c18999b91f4913a1a54cc892ce4b0298d6543885122f40befcded754bcad",
+      "selection.json": "2da8a6259e101288229b8ac92c0dca48a724d1061fc6a82c34b7b5b16ea4b614",
+      "cohorts.json": "25ee44ab6a594da2442da42f07ff73a5ac76a36851347e1f5433ea739060fdb2",
+      "protocol.json": "ea0786bf0df3cb755ddf5cd19c5525221946368214801b49dbc3f4a6c1e6d407",
+      "evaluators.json": "92e8da9d9f783ce5faa86405337238bdcf51085c01c2d1528526c7d8be289b7f",
+      "source_inventory.json": "a0364a219652dfa874f03751c68ca2a6cdb6bdd181fe39a686098c42ec46e235",
+      "test_summary.json": "1d12f8d8ded76c1f8aca5c985f31de3a5ff99b7b5e358b1e81178f9b651b013f",
+      "test_rows.json": "e4921d0bd040be751ac58323e482b10b60ee76ffe55d9d6d32f8cc333fb7f952"
+    },
+    "2": {
+      "complete.json": "3dec020eb4bee69bf0b1d5caefc305b157cebd10bca55ed440ab7c613da7f6fe",
+      "selection.json": "992cbf17939c1e1607ba97b448130239f858866df975eff28944deefe799f9ef",
+      "cohorts.json": "9fc2912ddc6d4ca4e5a332d1298a8ce8551c7efe96f8b936822b74817030360d",
+      "protocol.json": "ea0786bf0df3cb755ddf5cd19c5525221946368214801b49dbc3f4a6c1e6d407",
+      "evaluators.json": "92e8da9d9f783ce5faa86405337238bdcf51085c01c2d1528526c7d8be289b7f",
+      "source_inventory.json": "a0364a219652dfa874f03751c68ca2a6cdb6bdd181fe39a686098c42ec46e235",
+      "test_summary.json": "10a00affea171afbb80df3b3006d32c933cb06353f11d857b7eecd5727f6a9c1",
+      "test_rows.json": "d1889a20ebb2d4028e9ac93c151b6f6574fec67ccfa5bca46975274961aadc6e"
+    },
+    "3": {
+      "complete.json": "bad2713ff25ce563892fd88266184dca68101e7475c927f62d8f078a1b44faf3",
+      "selection.json": "69976762383961a309ffdcdea0901ddff2ec1684ef36d4ac93244bb559731e1b",
+      "cohorts.json": "ce8ed3c19506871b9bc76d85ae5c7f10bc24749617195de7a50a131c60496624",
+      "protocol.json": "ea0786bf0df3cb755ddf5cd19c5525221946368214801b49dbc3f4a6c1e6d407",
+      "evaluators.json": "92e8da9d9f783ce5faa86405337238bdcf51085c01c2d1528526c7d8be289b7f",
+      "source_inventory.json": "a0364a219652dfa874f03751c68ca2a6cdb6bdd181fe39a686098c42ec46e235",
+      "test_summary.json": "c740dea47eec3741aecccaf23e33cab552490bcf843f5719e5df8d1c0d75cdd3",
+      "test_rows.json": "997b9d12e8f2eaa5184aa83d0a0d8ca3378ca9ba9d101daef1fde2cd4d02cf02"
+    }
+  },
+  "protocol_file_sha256": "21389d690115eecdd6cdd521fc13e9af254a44bfd3842ccda4274a2c10c1e757",
+  "independent_summary_sha256": "8e53f4440aa4f7188c45606202e1f656a5bb0e66b49dbea890f3f061c419968d",
+  "checkpoints": {
+    "303401": {
+      "bytes": 63923,
+      "role": "LAST",
+      "sha256": "c4622dbd701df88444344ec908263ccebcbbd28da40c9812c1b86749169c1577",
+      "state_sha256": "c8ecce05057b01d71c1493df97c6f0c9cbb4d03b5a44dd0dea5fc8917a64fc87"
+    },
+    "303402": {
+      "bytes": 63923,
+      "role": "LAST",
+      "sha256": "5186940d2d687325cea6caba2cde0a69fa6182bba92df949e39753d53f4f77cc",
+      "state_sha256": "39cf1051818343fb3bdc7b3489e6b204c7452dffecd6724423a717378e85fa24"
+    },
+    "303403": {
+      "bytes": 63923,
+      "role": "LAST",
+      "sha256": "d8c78f2bb1fc5a20883b5d81013555fb1ec66d489cf08648ae0533c8e4efaf4b",
+      "state_sha256": "c7b2020bbb154ecf135d0d75eea0f8e24e9ca93375ea36e265fa12bba5afc3a3"
+    }
+  }
+}

@@ -1,102 +1,111 @@
-# Adaptive Video Preprocessing for VCM
+# V34-R1 — Adaptive preprocessing for Video Swin
 
-Bộ preprocessing V22/V23/V24 cho **Action Recognition (AR)** và **Object Detection (OD)**,
-phát triển từ bài học V1–V21 và tài liệu [IEEE TCSVT, IEEE TIP, CVPR cùng các
-bài trong LAB](docs/RESEARCH_DESIGN.md). Mục tiêu: **BD-rate < −10% so với từng
-H.264 và H.265**, theo Top-1 của AR và COCO mAP của OD.
+CNN+GRU chọn bộ lọc theo vùng và theo thời gian **trước H.264/H.265**. Decoder chuẩn dựng RGB, sau đó **Video Swin-T đóng băng** nhận dạng hành động. Codec, bộ lọc và task model không được huấn luyện bằng backpropagation trong V34-R1.
 
-**Trạng thái 2026-10-05:** V23 đã hoàn tất. AR/r2plus1d_18 đạt BD-rate
-**−4,62% / −2,59%**; OD/ResNet50 đạt **−11,87% / −7,63%** (H.264 / H.265).
-Learned được chọn **0/1.280 AR** và **100/1.000 OD**. OD/H.264 qua DEV screen;
-**mục tiêu chung chưa đạt**, và AR co về identity cuối train.
+Repository này chỉ công bố **V34-R1 và lượt kiểm chứng độc lập trên 1.024 video Kinetics-400 validation**, tổng hợp ngày 13/10/2026. Controller được huấn luyện theo hướng AR+OT; kết quả độc lập hiện có là **AR**, chưa có kết quả OT/OD độc lập.
 
-**V24 tập trung AR:** sửa guard mâu thuẫn source/anchor, dùng cùng guard trong
-train/eval; học chọn profile preprocessing bằng nhãn từ byte codec thật trên
-TRAIN. Các profile mạnh và temporal/DC phục vụ QP40/45/50; identity vẫn hợp lệ.
-Lượt Kaggle mới gồm đối chứng chỉ sửa guard trên checkpoint V23, rồi train/eval
-policy V24 trên cùng cohort. **[Job V24 private đang RUNNING](docs/V24_KAGGLE_EXECUTION.md); chưa có kết quả task V24.** Xem [thiết kế và
-phép so sánh V24](docs/V24_AR_DESIGN.md), [kiểm chứng local](docs/V24_VALIDATION.md).
+## Kiến trúc pipeline
 
-## Bộ adaptive preprocessor
+![V34-R1: adaptive preprocessing ở sender, decoder chuẩn và Video Swin ở receiver; codec thật tạo supervision offline](docs/figures/v34_pipeline.png)
 
-- [V24 AR profile policy](adaptive_vcm/profiles.py) và [trainer](adaptive_vcm/train_profiles.py):
-  học chọn profile khả thi theo byte thật, giữ identity fallback và teacher guard.
-- [V23 rate-aware policy](adaptive_vcm/rateaware.py) và [trainer measured-codec](adaptive_vcm/train_rateaware.py):
-  7 control, không dùng rate prior của V22; tăng budget học ở QP cao.
-- [Learned multiscale blend](adaptive_vcm/learned.py): mạng nhỏ dự đoán mức
-  blend và hỗn hợp Gaussian0.7/1.5/3.0, điều kiện theo QP/codec, có bảo vệ
-  semantic và gate theo chuyển động/cắt cảnh.
-- [Preprocessing và controls](adaptive_vcm/preprocessing.py): giảm chi tiết
-  nền cho OD; giữ saliency/chuyển động cho AR; resize/blur controls từ V1/V2.
-- [Chọn stream](adaptive_vcm/selection.py): chỉ nhận byte thật và tín hiệu
-  teacher; fallback identity khi không có biến đổi đủ an toàn/tiết kiệm.
-- [Train](adaptive_vcm/train.py): real-codec forward, STE backward, task regret
-  và rate prior được hiệu chỉnh bằng bitrate đo. [Thiết kế](docs/RESEARCH_DESIGN.md)
-  giải thích rõ giới hạn của rate prior và feature loss OD.
+RGB nguồn đi vào detector và bộ tính chuyển động để tạo ba bản đồ: object/history, context/motion và background. CNN+GRU dùng RGB, các bản đồ và điều kiện codec/QP/task/domain để đề xuất action. Có **13 action cố định**, gồm identity; đây là các cấu hình lọc tần số theo vùng, không phải 13 mạng được huấn luyện.
 
-Decoder dùng H.264/H.265 và mạng tác vụ thông thường. Không cần neural
-postprocessor hay truyền mask. Thử nhiều candidate tăng chi phí encoder;
-runner ghi thời gian chuẩn bị source và toàn bộ candidate search.
+Phía gửi thử identity và tối đa ba action khác qua **codec thật**, kiểm tra rate và độ nhất quán với nguồn trên ảnh đã decode, rồi chọn packet nhỏ nhất vượt qua guard. Đây là phép tìm kiếm ứng viên với nhiều lần encode. Chỉ packet được chọn được truyền; RGB gốc và bản đồ vùng dùng tại sender. Phía nhận chạy decoder độc lập rồi Video Swin-T.[^swin]
 
-## Chạy local
+**Anchor “codec không preprocessing”**: giữ nguyên RGB → cùng codec, QP, preset và GOP → cùng decoder → cùng Video Swin. Ba checkpoint dưới đây là **controller preprocessing**, cùng dùng một bộ trọng số Video Swin `Swin3D_T_Weights.KINETICS400_V1`.[^torchvision]
 
-Python>=3.10, PyTorch/TorchVision, OpenCV, SciPy, pycocotools, FFmpeg có x264/x265:
+<details>
+<summary>Sơ đồ Mermaid có thể chỉnh sửa</summary>
 
-```powershell
-cd D:\STUDY\LAB\hope
-& D:\STUDY\AI\envs\ten_env\python.exe -m pytest tests -q --basetemp=outputs\pytest
+```mermaid
+flowchart LR
+    accTitle: V34-R1 sender and receiver
+    accDescr: Source RGB supplies region maps and a sender-only reference. A frozen controller shortlists filtering actions. Real codec trials feed a source guard; the selected packet reaches an independent standard decoder and frozen Video Swin.
+    subgraph sender["Sender: adaptive preprocessing and candidate search"]
+        source_rgb["Source RGB"]
+        region_maps["Source detector + causal motion<br/>3 region maps"]
+        controller["Frozen CNN + GRU controller<br/>RGB + maps + codec/QP/task/domain"]
+        candidates["13 fixed actions<br/>shortlist: 3 edits + identity"]
+        codec_trials["Real x264 / x265 trials<br/>encode + sender decode"]
+        source_guard["Source-only consistency guard<br/>measured rate; identity fallback"]
+        source_rgb --> region_maps
+        source_rgb --> controller
+        region_maps --> controller
+        controller --> candidates
+        source_rgb --> candidates
+        region_maps --> candidates
+        candidates --> codec_trials --> source_guard
+        source_rgb -. "source reference, sender only" .-> source_guard
+    end
+    packet["Selected standard bitstream<br/>+ common header"]
+    decoder["Independent H.264 / H.265 decoder"]
+    video_swin["Frozen Video Swin-T<br/>AR prediction"]
+    source_guard --> packet --> decoder --> video_swin
+    classDef frozen fill:#e9efff,stroke:#4268ad,color:#172641
+    classDef fixed fill:#fff2d9,stroke:#a86c12,color:#172641
+    class controller,video_swin frozen
+    class candidates,codec_trials,decoder fixed
 ```
 
-Linux/Kaggle có thể cài `pip install -e .`; không cần cài lại torch nếu runtime
-đã cung cấp. CPU Windows/Conda tự tìm FFmpeg trong `Library/bin` khi thiếu PATH.
+</details>
+
+Xem [giải thích các khối, đường đi và offline training](docs/PIPELINE.md).
+
+## Kết quả trên tập độc lập
+
+**BD-rate theo accuracy**, so với anchor không preprocessing; âm nghĩa là giảm rate trên khoảng accuracy chung của hai đường. Không phải BD-rate theo PSNR.
+
+| Checkpoint controller | H.264 BD-rate | H.264 CI | H.265 BD-rate | H.265 CI |
+|---|---:|---|---:|---|
+| **303401 — primary, chọn trước** | **−14.46%** | **97.5%: [−17.19; −11.68]%** | **−11.41%** | **97.5%: [−13.42; −9.43]%** |
+| 303402 — secondary | −14.42% | 95%: [−16.83; −12.01]% | −11.62% | 95%: [−13.37; −9.88]% |
+| 303403 — secondary | −14.67% | 95%: [−17.10; −12.12]% | −11.36% | 95%: [−13.14; −9.61]% |
+
+Primary 303401 đạt tiêu chí của giao thức trên cả hai codec. Hai CI chính dùng Bonferroni để có độ bao phủ chung 95%; các CI secondary mang tính mô tả. Ngưỡng tiết kiệm 10% áp dụng cho **ước lượng điểm**, không chứng minh tiết kiệm tối thiểu 10% trên toàn bộ CI.
+
+**Kiểm tra chuyển backbone chưa cải thiện:** cùng packet, R3D-18 có BD-rate primary **+1.25% H.264 / +2.11% H.265**, CI 95% đều chứa 0. Không suy ra hiệu quả cho backbone khác hoặc OT/OD.[^r3d]
+
+| Thiết lập kiểm chứng | Giá trị |
+|---|---|
+| Nguồn | 1.024 ID thuộc official K400 val; 4 shard × 256 video |
+| Đầu vào | JPEG provider; 16 frame riêng biệt, stride 2; RGB 128×128 |
+| Codec thật | x264/x265, `medium`, QP 30/35/40/45/50, 25 fps, GOP 16, không B-frame/scenecut |
+| Rate | Byte bitstream + common header / số pixel RGB canonical |
+| Ghép cặp | 112.640 dòng đầy đủ; cùng video, codec, QP và task weights |
+| Bootstrap | 5.000 lần theo video; cùng mẫu video qua mọi QP |
+| Controller | 3 checkpoint LAST đóng băng; không train/chỉnh ngưỡng trên tập mới |
+
+“Seed 0–3” trong tên notebook là **bốn shard dữ liệu**, mỗi shard chạy cả ba controller. Kết quả được gộp theo video rồi tính lại BD-rate, không lấy trung bình BD-rate các shard.
+
+[Báo cáo từng QP, checkpoint, fixed-filter và identity](results/v34_r1/REPORT.md) · [Kết quả bootstrap đầy đủ](results/v34_r1/independent_summary.json) · [Kiểm tra ghép dữ liệu](results/v34_r1/merge-audit.json)
+
+**Giới hạn:** đây là nghiên cứu trên tập frame của provider, không phải độ chính xác K400 full-video/multi-view chuẩn. Nhịp frame gốc chưa được xác minh. Mẫu được loại official TRAIN và lịch sử controller đã biết; backbone có thể từng được chọn bằng hiệu năng validation công bố. Source-consistency guard không bảo đảm accuracy và không thay thế HOTA/IDF1/MOTA khi đánh giá OT.
+
+## Sử dụng và tái lập
+
+Python ≥3.10; FFmpeg phải có `libx264` và `libx265`. Cài bản PyTorch/torchvision tương thích với CUDA của máy trước nếu dùng GPU.
 
 ```bash
-python -m adaptive_vcm.train --task ar --root /data/kineticscleaned \
-  --count 512 --steps 1000 --seed 302001 --out outputs/ar_train
-python -m adaptive_vcm.evaluate --task ar --root /data/kineticscleaned \
-  --checkpoint outputs/ar_train/preprocessor_last.pth \
-  --count 128 --split dev --codecs h264 h265 --bootstrap 2000 --out outputs/ar_eval
-python -m adaptive_vcm.train --task od --root /data/coco/val2017 \
-  --annotations /data/coco/annotations/instances_val2017.json \
-  --count 512 --steps 1000 --out outputs/od_train
-python -m adaptive_vcm.evaluate --task od --root /data/coco/val2017 \
-  --annotations /data/coco/annotations/instances_val2017.json \
-  --checkpoint outputs/od_train/preprocessor_last.pth \
-  --count 100 --split dev --codecs h264 h265 --bootstrap 200 --out outputs/od_eval
+python -m pip install -e ".[dev,tracking]"
+python -m pytest -q
+python scripts/reproduce_results.py --verify-only
+python scripts/reproduce_results.py --out output/reproduced_v34
 ```
 
-Bỏ `--checkpoint` để chạy nhánh preprocessing không huấn luyện. TRAIN/DEV/TEST
-tách theo hash source; COCO val2017 trong pilot cũng chia hash trước khi chọn
-ảnh. Đây không phải tuyên bố đánh giá toàn COCO hay dữ liệu holdout mới.
+Lệnh cuối giải nén bốn shard, kiểm tra SHA-256 và tái tính **đầy đủ 5.000 bootstrap** bằng evaluator đã dùng trong nghiên cứu; không cần GPU, video hoặc tải trọng số task. Chi tiết chạy lại inference và huấn luyện controller: [REPRODUCE.md](docs/REPRODUCE.md).
 
-Output: manifest mã/config/source, log huấn luyện, final checkpoint,
-JSONL từng source/QP/arm, audit candidate selection, curve/CI/decision.
-`--save-streams` giữ các elementary streams đã chọn. BD-rate dùng pixel nguồn
-làm mẫu số ngay cả khi candidate giảm độ phân giải. Runner từ chối thư mục
-output đã có dữ liệu để tránh trộn bằng chứng.
+| Thành phần | Vị trí |
+|---|---|
+| V34 runtime | [`adaptive_vcm/v34/`](adaptive_vcm/v34/) |
+| Recipe R1 | [`configs/v34_arot_r1.json`](configs/v34_arot_r1.json) |
+| Frozen independent protocol | [`results/v34_r1/protocol/`](results/v34_r1/protocol/) |
+| 3 controller và mô tả/hashes | [`checkpoints/v34_r1/`](checkpoints/v34_r1/) |
+| Kết quả và paired rows gzip | [`results/v34_r1/`](results/v34_r1/) |
+| Provenance từng file runtime | [`publication_manifest.json`](results/v34_r1/publication_manifest.json) |
+| References và BibTeX | [`REFERENCES.md`](docs/REFERENCES.md), [`references.bib`](references.bib) |
 
-## Kaggle từ pool.json
+Các module có tên `v32*`, `v33ap` và utility cũ còn trong source là dependency của V34; giữ nguyên byte để bảo toàn evaluator đã chạy. Chỉ recipe V34, tài liệu và kết quả V34-R1 được công bố trong cây hiện tại. Không chứa tài khoản/API key, video dataset hoặc trọng số task model. Git history trước lần xuất bản này được giữ nguyên.
 
-Token chỉ đọc từ file ngoài repo và truyền qua environment subprocess.
-Notebook private, free T4, code clone đúng full commit SHA; không chứa token.
-
-```powershell
-$pythonVCM = 'D:\STUDY\AI\envs\ten_env\python.exe'
-$commitVCM = git rev-parse HEAD
-& $pythonVCM scripts/kaggle_runner.py prepare --account qktttttttttt \
-  --slug v22-adaptive-ar-s302001 --task ar --mode learned --commit $commitVCM \
-  --count 128 --steps 1000 --bootstrap 2000
-& $pythonVCM scripts/kaggle_runner.py submit --account qktttttttttt \
-  --slug v22-adaptive-ar-s302001 --pool D:\STUDY\LAB\pool.json
-& $pythonVCM scripts/kaggle_runner.py status --account qktttttttttt \
-  --slug v22-adaptive-ar-s302001 --pool D:\STUDY\LAB\pool.json
-```
-
-PowerShell: viết mỗi lệnh trên một dòng hoặc dùng backtick để nối dòng
-(dấu `\` trong ví dụ chỉ giúp trình bày). OD dùng `--task od --count 100
---bootstrap 200` và tài khoản có COCO2017. `download` thu output theo cùng
-handle. Không có lịch tự chạy/check ngầm.
-
-Gate báo cáo rõ `point_passes`, `screen_passes`, và `target_confirmed=false`.
-Cần kết quả thực nghiệm độc lập trước khi kết luận đã đạt <−10% cho cả OD/AR
-và hai codec.
+[^swin]: Ze Liu et al. [Video Swin Transformer, CVPR 2022](https://openaccess.thecvf.com/content/CVPR2022/html/Liu_Video_Swin_Transformer_CVPR_2022_paper.html).
+[^torchvision]: PyTorch. [Torchvision `swin3d_t` và `KINETICS400_V1`](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.video.swin3d_t.html).
+[^r3d]: Du Tran et al. [A Closer Look at Spatiotemporal Convolutions for Action Recognition, CVPR 2018](https://openaccess.thecvf.com/content_cvpr_2018/html/Tran_A_Closer_Look_CVPR_2018_paper.html).

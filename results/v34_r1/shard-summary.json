@@ -1,0 +1,350 @@
+{
+  "shards": [
+    {
+      "shard": 0,
+      "account": "hieusunday0412",
+      "sources": 256,
+      "status": "complete",
+      "runtime_hours": 4.530371290555555,
+      "started_utc": "2026-10-12T12:11:07.368296+00:00",
+      "finished_utc": "2026-10-12T16:42:56.704942+00:00",
+      "primary_points": {
+        "h264": {
+          "bd_rate_pct": -16.491297324351716,
+          "pchip_bd_rate_pct": -16.972574328172474,
+          "bd_quality_pp": 4.530329612935647,
+          "same_qp_gap_pp": [
+            1.171875,
+            2.34375,
+            3.125,
+            4.296875,
+            5.078125
+          ],
+          "same_qp_rate_pct": [
+            -13.278202760227986,
+            -10.218053987708075,
+            -6.444552780462698,
+            -3.969406932783781,
+            -1.8528258285742671
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        },
+        "h265": {
+          "bd_rate_pct": -12.036648982815745,
+          "pchip_bd_rate_pct": -12.479341142085431,
+          "bd_quality_pp": 4.919993499949155,
+          "same_qp_gap_pp": [
+            0.390625,
+            2.34375,
+            3.515625,
+            5.859375,
+            3.515625
+          ],
+          "same_qp_rate_pct": [
+            -12.30229124336808,
+            -8.618187907015573,
+            -5.162849512431322,
+            -2.0531924281650404,
+            -0.8150742700978597
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        }
+      }
+    },
+    {
+      "shard": 1,
+      "account": "dieulinhh",
+      "sources": 256,
+      "status": "complete",
+      "runtime_hours": 5.084119608888888,
+      "started_utc": "2026-10-12T04:54:36.451068+00:00",
+      "finished_utc": "2026-10-12T09:59:39.281660+00:00",
+      "primary_points": {
+        "h264": {
+          "bd_rate_pct": -20.465510338088144,
+          "pchip_bd_rate_pct": -22.83382386648211,
+          "bd_quality_pp": 5.612234349799197,
+          "same_qp_gap_pp": [
+            1.5625,
+            3.515625,
+            3.515625,
+            8.59375,
+            3.515625
+          ],
+          "same_qp_rate_pct": [
+            -12.639828609595959,
+            -9.809465646255966,
+            -6.484368831523691,
+            -4.15773035805076,
+            -1.9722175588463786
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        },
+        "h265": {
+          "bd_rate_pct": -11.180214413807665,
+          "pchip_bd_rate_pct": -11.31997493893522,
+          "bd_quality_pp": 3.9043911509156795,
+          "same_qp_gap_pp": [
+            0.78125,
+            1.5625,
+            2.34375,
+            5.46875,
+            4.6875
+          ],
+          "same_qp_rate_pct": [
+            -10.803379834019234,
+            -7.747290404918516,
+            -5.314769172957257,
+            -2.3915582096334265,
+            -0.9095309888394909
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        }
+      }
+    },
+    {
+      "shard": 2,
+      "account": "ngynanhthuw",
+      "sources": 256,
+      "status": "complete",
+      "runtime_hours": 5.161245488333333,
+      "started_utc": "2026-10-12T04:54:50.192799+00:00",
+      "finished_utc": "2026-10-12T10:04:30.676557+00:00",
+      "primary_points": {
+        "h264": {
+          "bd_rate_pct": -10.336895458892581,
+          "pchip_bd_rate_pct": -12.407508330326806,
+          "bd_quality_pp": 3.2925446878400315,
+          "same_qp_gap_pp": [
+            0.390625,
+            0.390625,
+            3.125,
+            3.90625,
+            3.125
+          ],
+          "same_qp_rate_pct": [
+            -13.102266452872701,
+            -9.262489885390735,
+            -5.920044970923666,
+            -3.695770091272832,
+            -1.9346802826969878
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        },
+        "h265": {
+          "bd_rate_pct": -10.008442805032614,
+          "pchip_bd_rate_pct": -13.580739337071376,
+          "bd_quality_pp": 5.010175989064694,
+          "same_qp_gap_pp": [
+            0.78125,
+            2.34375,
+            4.6875,
+            6.640625,
+            5.078125
+          ],
+          "same_qp_rate_pct": [
+            -11.770907932923292,
+            -7.908469838876031,
+            -4.964700382899445,
+            -2.307684893348372,
+            -0.8431963919262819
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        }
+      }
+    },
+    {
+      "shard": 3,
+      "account": "dngbolm",
+      "sources": 256,
+      "status": "complete",
+      "runtime_hours": 4.786719342222223,
+      "started_utc": "2026-10-12T12:45:38.093084+00:00",
+      "finished_utc": "2026-10-12T17:32:50.282716+00:00",
+      "primary_points": {
+        "h264": {
+          "bd_rate_pct": -10.924341941315618,
+          "pchip_bd_rate_pct": -12.003393323178493,
+          "bd_quality_pp": 3.1128384787047323,
+          "same_qp_gap_pp": [
+            -0.390625,
+            0.390625,
+            1.5625,
+            4.296875,
+            3.90625
+          ],
+          "same_qp_rate_pct": [
+            -12.172673061965256,
+            -9.918130719531115,
+            -6.577333009082087,
+            -3.7081302315005615,
+            -1.8556348283369717
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        },
+        "h265": {
+          "bd_rate_pct": -11.659148381090123,
+          "pchip_bd_rate_pct": -13.317827359600146,
+          "bd_quality_pp": 5.615141312319437,
+          "same_qp_gap_pp": [
+            1.171875,
+            4.296875,
+            2.34375,
+            5.859375,
+            7.8125
+          ],
+          "same_qp_rate_pct": [
+            -12.085460647106261,
+            -8.375850754681323,
+            -4.763721837869461,
+            -2.6465947525054045,
+            -0.9179722244560318
+          ],
+          "quality_monotone_by_rate": {
+            "anchor": true,
+            "adaptive": true
+          },
+          "guards": {
+            "canonical_bd_rate_lt_minus10": true,
+            "pchip_bd_rate_lt_minus10": true,
+            "bd_quality_nonnegative": true,
+            "worst_qp_gap_ge_minus0_5pp": true,
+            "same_qp_rate_nonincrease": true
+          },
+          "point_passes": true,
+          "ci": null,
+          "screen_passes": false,
+          "target_confirmed": false
+        }
+      }
+    }
+  ],
+  "task_model_states_match_across_shards": true,
+  "evaluators": {
+    "task_models": {
+      "ar": {
+        "name": "swin3d_t",
+        "state_sha256": "1203c237fc4fee53917f852de56469dfa31d191c00ef54ee8d33461727ebd393"
+      },
+      "od": {
+        "name": "resnet50",
+        "state_sha256": "c4616e10536fb767f901700c621bb851a10259b6ed90f3af0e4596d5a6886533",
+        "transform": {
+          "min_size": [
+            320
+          ],
+          "max_size": 640
+        },
+        "ot_transform": {
+          "min_size": [
+            960
+          ],
+          "max_size": 960
+        },
+        "detections_per_img": 300
+      }
+    },
+    "transfer_ar": "66d2c433c3a0aed19dfb758d86005af130f3ac19e5f3b2cc4ceb0996a24929a6",
+    "transfer_od": null,
+    "tracker": "supervision==0.27.0 ByteTrack"
+  },
+  "inference_unit": "1024 source videos; per-shard point estimates descriptive only"
+}

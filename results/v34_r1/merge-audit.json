@@ -1,0 +1,58 @@
+{
+  "protocol_file_sha256": "21389d690115eecdd6cdd521fc13e9af254a44bfd3842ccda4274a2c10c1e757",
+  "protocol_sha256": "2872e7f8edc9f778a5b9591234c30f60cfba72b9a5d9562d5f73cf1b1b2d1747",
+  "unique_source_videos": 1024,
+  "shards": 4,
+  "complete_paired_rows": 112640,
+  "selected_controller_seeds": [
+    303401,
+    303402,
+    303403
+  ],
+  "primary_seed": 303401,
+  "checkpoint_and_state_hashes_verified": true,
+  "all_shard_protocols_match": true,
+  "source_and_pixel_disjoint": true,
+  "no_training_or_recalibration": true,
+  "merge_unit": "source video; not mean of shard BD rates",
+  "paths": [
+    "results/v34_r1/shards/shard0",
+    "results/v34_r1/shards/shard1",
+    "results/v34_r1/shards/shard2",
+    "results/v34_r1/shards/shard3"
+  ],
+  "files": {
+    "results/v34_r1/shards/shard0": {
+      "complete.json": "ce785d4df895724bea342a9b1d1c294c42f42d8169f876cfe3e3c46524997b27",
+      "selection.json": "9559cea964eb745aab6851699e9a4c1372c5450a4e81afadea3929c9621c83a8",
+      "cohorts.json": "45f293943830897fdfedb33cffd4d775da7891ca802a10afa2e23fd06a262592",
+      "protocol.json": "ea0786bf0df3cb755ddf5cd19c5525221946368214801b49dbc3f4a6c1e6d407",
+      "test_rows.json": "d9d7b1377b447cf3a8a33f2a25bbaa05d2ab8e9679b2dec097aa9c614a84c46c",
+      "evaluators.json": "92e8da9d9f783ce5faa86405337238bdcf51085c01c2d1528526c7d8be289b7f"
+    },
+    "results/v34_r1/shards/shard1": {
+      "complete.json": "4bd2c18999b91f4913a1a54cc892ce4b0298d6543885122f40befcded754bcad",
+      "selection.json": "2da8a6259e101288229b8ac92c0dca48a724d1061fc6a82c34b7b5b16ea4b614",
+      "cohorts.json": "25ee44ab6a594da2442da42f07ff73a5ac76a36851347e1f5433ea739060fdb2",
+      "protocol.json": "ea0786bf0df3cb755ddf5cd19c5525221946368214801b49dbc3f4a6c1e6d407",
+      "test_rows.json": "e4921d0bd040be751ac58323e482b10b60ee76ffe55d9d6d32f8cc333fb7f952",
+      "evaluators.json": "92e8da9d9f783ce5faa86405337238bdcf51085c01c2d1528526c7d8be289b7f"
+    },
+    "results/v34_r1/shards/shard2": {
+      "complete.json": "3dec020eb4bee69bf0b1d5caefc305b157cebd10bca55ed440ab7c613da7f6fe",
+      "selection.json": "992cbf17939c1e1607ba97b448130239f858866df975eff28944deefe799f9ef",
+      "cohorts.json": "9fc2912ddc6d4ca4e5a332d1298a8ce8551c7efe96f8b936822b74817030360d",
+      "protocol.json": "ea0786bf0df3cb755ddf5cd19c5525221946368214801b49dbc3f4a6c1e6d407",
+      "test_rows.json": "d1889a20ebb2d4028e9ac93c151b6f6574fec67ccfa5bca46975274961aadc6e",
+      "evaluators.json": "92e8da9d9f783ce5faa86405337238bdcf51085c01c2d1528526c7d8be289b7f"
+    },
+    "results/v34_r1/shards/shard3": {
+      "complete.json": "bad2713ff25ce563892fd88266184dca68101e7475c927f62d8f078a1b44faf3",
+      "selection.json": "69976762383961a309ffdcdea0901ddff2ec1684ef36d4ac93244bb559731e1b",
+      "cohorts.json": "ce8ed3c19506871b9bc76d85ae5c7f10bc24749617195de7a50a131c60496624",
+      "protocol.json": "ea0786bf0df3cb755ddf5cd19c5525221946368214801b49dbc3f4a6c1e6d407",
+      "test_rows.json": "997b9d12e8f2eaa5184aa83d0a0d8ca3378ca9ba9d101daef1fde2cd4d02cf02",
+      "evaluators.json": "92e8da9d9f783ce5faa86405337238bdcf51085c01c2d1528526c7d8be289b7f"
+    }
+  }
+}

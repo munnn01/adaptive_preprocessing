@@ -134,8 +134,27 @@ class RateAwarePreprocessor(nn.Module):
 
 def load_preprocessor(state, task):
     from .profiles import ProfilePreprocessor
-    if state.get("task") != task or state.get("steps", 0) < 1 or not state.get("train_ids_sha256"):
+    if state.get('schema') in ('adaptive-vcm-motion-v7', 'adaptive-vcm-semantic-v8', 'adaptive-vcm-conditional-v9'):
+        from .motion_selection import load_motion_preprocessor
+        return load_motion_preprocessor(state, task)
+    utility = state.get('schema') == 'adaptive-vcm-utility-v5'
+    portfolio = state.get('schema') == 'adaptive-vcm-portfolio-v6'
+    if portfolio:
+        fitted = state.get('fit_method') == 'sourceblocked_train_cv_portfolio' and state.get('measurements', 0) >= 4
+    else:
+        fitted = (state.get('fit_method') == 'sourceblocked_train_cv_ridge'
+                  and state.get('measurements', 0) >= 4) if utility else state.get('steps', 0) >= 1
+    if state.get("task") != task or not fitted or not state.get("train_ids_sha256"):
         raise ValueError("checkpoint task/training provenance mismatch")
+    if state.get('schema') == 'adaptive-vcm-ranking-v4':
+        from .ranking import load_rank_preprocessor
+        return load_rank_preprocessor(state, task)
+    if state.get('schema') == 'adaptive-vcm-utility-v5':
+        from .utility_ranking import load_utility_preprocessor
+        return load_utility_preprocessor(state, task)
+    if portfolio:
+        from .portfolio_ranking import load_portfolio_preprocessor
+        return load_portfolio_preprocessor(state, task)
     if state.get("schema") == "adaptive-vcm-blend-v1":
         model = AdaptiveBlendPreprocessor(state["width"])
     elif state.get("schema") == RateAwarePreprocessor.schema:
