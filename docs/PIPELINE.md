@@ -52,7 +52,7 @@ Trong `selected` R1, real source guard quyết định cuối cùng; action từ
 
 Receiver lấy standard bitstream và common packet header, decode độc lập thành RGB. Nó không cần controller, maps hoặc clean source. Frozen Video Swin-T thực hiện AR; R3D-18 đo chuyển backbone trên cùng packet.
 
-Khung AR+OT còn có detector + `supervision==0.27.0` ByteTrack. Nghiên cứu độc lập công bố ở đây chỉ có nhãn AR, nên OT trên K400 là source consistency, **không phải** HOTA/IDF1/MOTA xác minh. API `ar_od` tồn tại trong source nhưng không có kết quả OD độc lập ở bản công bố này.
+Khung AR+OT còn có detector + `supervision==0.27.0` ByteTrack. Nghiên cứu độc lập công bố ở đây có nhãn AR (K400) và kết quả kiểm chứng OD độc lập trên COCO 2017 (Faster R-CNN). OT trên K400 sử dụng source consistency, **không phải** HOTA/IDF1/MOTA xác minh.
 
 ## 6. Offline training và backpropagation
 

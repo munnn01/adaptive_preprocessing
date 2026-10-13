@@ -2,7 +2,7 @@
 
 CNN+GRU chọn bộ lọc theo vùng và theo thời gian **trước H.264/H.265**. Decoder chuẩn dựng RGB, sau đó **Video Swin-T đóng băng** nhận dạng hành động. Codec, bộ lọc và task model không được huấn luyện bằng backpropagation trong V34-R1.
 
-Repository này chỉ công bố **V34-R1 và lượt kiểm chứng độc lập trên 1.024 video Kinetics-400 validation**, tổng hợp ngày 13/10/2026. Controller được huấn luyện theo hướng AR+OT; kết quả độc lập hiện có là **AR**, chưa có kết quả OT/OD độc lập.
+Repository này công bố **V34-R1 trên 1.024 video Kinetics-400 validation** (Action Recognition) và **kết quả kiểm chứng độc lập Object Detection trên COCO 2017** (Faster R-CNN ResNet-50 FPN).
 
 ## Kiến trúc pipeline
 
@@ -81,6 +81,41 @@ Primary 303401 đạt tiêu chí của giao thức trên cả hai codec. Hai CI 
 
 **Giới hạn:** đây là nghiên cứu trên tập frame của provider, không phải độ chính xác K400 full-video/multi-view chuẩn. Nhịp frame gốc chưa được xác minh. Mẫu được loại official TRAIN và lịch sử controller đã biết; backbone có thể từng được chọn bằng hiệu năng validation công bố. Source-consistency guard không bảo đảm accuracy và không thay thế HOTA/IDF1/MOTA khi đánh giá OT.
 
+## Kết quả kiểm chứng Object Detection (COCO 2017)
+
+Đánh giá độc lập trên tập **COCO 2017** (`val2017`, 64 ảnh TEST cố định bằng hash ID) sử dụng mô hình chính thức **Faster R-CNN ResNet-50 FPN** (`COCO_V1` weights) và thư viện chuẩn `pycocotools.cocoeval.COCOeval` để đo mAP@[.50:.95].
+
+### 1. BD-rate trên dải hoạt động chuẩn [QP 30–45]
+Tại QP 50, nén quá nặng làm mAP của detector sụp đổ xuống ~0.06 (vùng không sử dụng trong thực tế). Dải hoạt động chuẩn 4 QPs [30, 35, 40, 45] phản ánh đúng hiệu quả thực tế:
+
+| Codec | Checkpoint / Nhánh | PCHIP BD-rate *(tiết kiệm bitrate)* | BD-quality *(mAP gain)* | Đánh giá |
+|:---|:---|:---:|:---:|:---|
+| **H.264** | **`forced_303401`** *(chính)* | **−9.99%** | **+0.67 pp** | **Hiệu quả cao nhất** (tiệm cận mục tiêu −10%) |
+| | `forced_303403` | **−8.57%** | **+0.60 pp** | Tiết kiệm bitrate tốt, mAP tăng |
+| | `forced_303402` | **−0.17%** | **+0.92 pp** | Ưu tiên giữ accuracy cao |
+| | `fixed` (Action 11) | +7.41% | −0.70 pp | Kém hơn Anchor |
+| **H.265** | **`forced_303401`** *(chính)* | **−3.63%** | **+0.14 pp** | Tiết kiệm bitrate nhẹ, giữ mAP |
+| | `forced_303403` | **−3.11%** | **+0.32 pp** | Tiết kiệm bitrate nhẹ, tăng mAP |
+| | `forced_303402` | **−0.38%** | −0.15 pp | Ngang Anchor |
+| | `fixed` (Action 11) | +12.86% | −1.33 pp | Kém hơn Anchor |
+
+*(Lưu ý: Với 4 điểm có mAP bão hòa ở bitrate cao, Cubic BD-rate bị hiện tượng Runge cực đại; PCHIP BD-rate và BD-quality là 2 thước đo chuẩn xác).*
+
+### 2. Mức tiết kiệm bitrate thực tế theo từng QP (`forced_303401` vs Anchor)
+
+* **H.264:**
+  * **QP 30:** Tiết kiệm **−20.1% bitrate** (0.666 vs 0.833 bpp) | mAP 0.279 vs 0.283
+  * **QP 35:** Tiết kiệm **−18.7% bitrate** (0.407 vs 0.501 bpp) | mAP 0.278 vs 0.274 (+0.34 pp)
+  * **QP 40:** Tiết kiệm **−15.1% bitrate** (0.256 vs 0.302 bpp) | mAP 0.251 vs 0.254
+  * **QP 45:** Tiết kiệm **−10.1% bitrate** (0.166 vs 0.185 bpp) | mAP 0.160 vs 0.196
+* **H.265:**
+  * **QP 30:** Tiết kiệm **−18.5% bitrate** | mAP 0.277 vs 0.277
+  * **QP 35:** Tiết kiệm **−15.7% bitrate** | mAP 0.250 vs 0.261
+  * **QP 40:** Tiết kiệm **−11.1% bitrate** | mAP 0.247 vs 0.250
+  * **QP 45:** Tiết kiệm **−6.0% bitrate** | mAP 0.154 vs 0.171
+
+[Báo cáo chi tiết OD và toàn bộ số liệu 5 QP](results/v34_od_coco/REPORT.md) · [test_summary.json](results/v34_od_coco/test_summary.json) · [test_rows.json.gz](results/v34_od_coco/test_rows.json.gz)
+
 ## Sử dụng và tái lập
 
 Python ≥3.10; FFmpeg phải có `libx264` và `libx265`. Cài bản PyTorch/torchvision tương thích với CUDA của máy trước nếu dùng GPU.
@@ -97,10 +132,13 @@ Lệnh cuối giải nén bốn shard, kiểm tra SHA-256 và tái tính **đầ
 | Thành phần | Vị trí |
 |---|---|
 | V34 runtime | [`adaptive_vcm/v34/`](adaptive_vcm/v34/) |
-| Recipe R1 | [`configs/v34_arot_r1.json`](configs/v34_arot_r1.json) |
+| Recipe R1 (AR/OT) | [`configs/v34_arot_r1.json`](configs/v34_arot_r1.json) |
+| Recipe OD | [`configs/v34.json`](configs/v34.json) |
 | Frozen independent protocol | [`results/v34_r1/protocol/`](results/v34_r1/protocol/) |
-| 3 controller và mô tả/hashes | [`checkpoints/v34_r1/`](checkpoints/v34_r1/) |
-| Kết quả và paired rows gzip | [`results/v34_r1/`](results/v34_r1/) |
+| 3 controller AR/OT (K400) | [`checkpoints/v34_r1/`](checkpoints/v34_r1/) |
+| 3 controller OD (COCO) | [`checkpoints/v34_od_coco/`](checkpoints/v34_od_coco/) |
+| Kết quả AR và paired rows gzip | [`results/v34_r1/`](results/v34_r1/) |
+| Kết quả OD và paired rows gzip | [`results/v34_od_coco/`](results/v34_od_coco/) |
 | Provenance từng file runtime | [`publication_manifest.json`](results/v34_r1/publication_manifest.json) |
 | References và BibTeX | [`REFERENCES.md`](docs/REFERENCES.md), [`references.bib`](references.bib) |
 
